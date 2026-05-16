@@ -6,7 +6,7 @@
 //!
 //! Safe Rust bindings for Apple's
 //! [Quartz Event Services](https://developer.apple.com/documentation/coregraphics/quartz_event_services)
-//! on macOS — synthesise + intercept keyboard, mouse, and scroll-wheel
+//! on macOS — synthesise + inspect keyboard, mouse, and scroll-wheel
 //! events globally.
 //!
 //! Pure C — zero Swift bridge.
@@ -24,7 +24,7 @@ pub use event::{
     type_string, Event, KeyEvent, Keycode, ModifierFlags, MouseButton, MouseEvent, Point,
     ScrollEvent, TapLocation,
 };
-pub use source::{EventSource, SourceState};
+pub use source::{EventSource, LocalEventsFilter, SourceState, SuppressionState};
 pub use tap::{EventTap, TapAction, TappedEvent};
 
 /// Common imports.
@@ -34,6 +34,6 @@ pub mod prelude {
         type_string, Event, KeyEvent, Keycode, ModifierFlags, MouseButton, MouseEvent, Point,
         ScrollEvent, TapLocation,
     };
-    pub use crate::source::{EventSource, SourceState};
+    pub use crate::source::{EventSource, LocalEventsFilter, SourceState, SuppressionState};
     pub use crate::tap::{EventTap, TapAction, TappedEvent};
 }

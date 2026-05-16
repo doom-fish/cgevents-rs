@@ -1,19 +1,27 @@
-//! Raw FFI declarations for the subset of Quartz Event Services we use.
+//! Raw FFI declarations for Quartz Event Services.
 //!
 //! Pure C — no Swift bridge needed. Linked against `CoreGraphics` +
 //! `CoreFoundation` + `ApplicationServices`.
 
-#![allow(non_camel_case_types, non_snake_case, non_upper_case_globals, missing_docs)]
+#![allow(
+    non_camel_case_types,
+    non_snake_case,
+    non_upper_case_globals,
+    missing_docs
+)]
 
 use core::ffi::c_void;
 
 pub type CFTypeRef = *const c_void;
 pub type CFAllocatorRef = *const c_void;
+pub type CFDataRef = *const c_void;
 pub type CFRunLoopRef = *mut c_void;
 pub type CFRunLoopSourceRef = *mut c_void;
 pub type CFMachPortRef = *mut c_void;
 pub type CFStringRef = *const c_void;
 pub type CFIndex = isize;
+pub type CFTypeID = usize;
+pub type CFTimeInterval = f64;
 
 pub type CGEventRef = *mut c_void;
 pub type CGEventSourceRef = *mut c_void;
@@ -26,9 +34,13 @@ pub type CGEventTapPlacement = u32;
 pub type CGEventTapOptions = u32;
 pub type CGEventMask = u64;
 pub type CGEventSourceStateID = i32;
+pub type CGEventSourceKeyboardType = u32;
 pub type CGMouseButton = u32;
 pub type CGScrollEventUnit = u32;
 pub type CGEventFlags = u64;
+pub type CGEventFilterMask = u32;
+pub type CGEventSuppressionState = u32;
+pub type CGEventTapProxy = *mut c_void;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -36,8 +48,6 @@ pub struct CGPoint {
     pub x: f64,
     pub y: f64,
 }
-
-// ---- Event types ----
 
 pub const kCGEventNull: CGEventType = 0;
 pub const kCGEventLeftMouseDown: CGEventType = 1;
@@ -58,19 +68,14 @@ pub const kCGEventOtherMouseUp: CGEventType = 26;
 pub const kCGEventOtherMouseDragged: CGEventType = 27;
 pub const kCGEventTapDisabledByTimeout: CGEventType = 0xFFFF_FFFE;
 pub const kCGEventTapDisabledByUserInput: CGEventType = 0xFFFF_FFFF;
-
-// ---- Mouse buttons ----
+pub const kCGAnyInputEventType: CGEventType = u32::MAX;
 
 pub const kCGMouseButtonLeft: CGMouseButton = 0;
 pub const kCGMouseButtonRight: CGMouseButton = 1;
 pub const kCGMouseButtonCenter: CGMouseButton = 2;
 
-// ---- Scroll units ----
-
 pub const kCGScrollEventUnitPixel: CGScrollEventUnit = 0;
 pub const kCGScrollEventUnitLine: CGScrollEventUnit = 1;
-
-// ---- Modifier flags (subset) ----
 
 pub const kCGEventFlagMaskAlphaShift: CGEventFlags = 0x0001_0000;
 pub const kCGEventFlagMaskShift: CGEventFlags = 0x0002_0000;
@@ -80,8 +85,6 @@ pub const kCGEventFlagMaskCommand: CGEventFlags = 0x0010_0000;
 pub const kCGEventFlagMaskHelp: CGEventFlags = 0x0040_0000;
 pub const kCGEventFlagMaskSecondaryFn: CGEventFlags = 0x0080_0000;
 pub const kCGEventFlagMaskNumericPad: CGEventFlags = 0x0020_0000;
-
-// ---- Tap location + options ----
 
 pub const kCGHIDEventTap: CGEventTapLocation = 0;
 pub const kCGSessionEventTap: CGEventTapLocation = 1;
@@ -93,14 +96,23 @@ pub const kCGTailAppendEventTap: CGEventTapPlacement = 1;
 pub const kCGEventTapOptionDefault: CGEventTapOptions = 0;
 pub const kCGEventTapOptionListenOnly: CGEventTapOptions = 1;
 
-// ---- Event-source state ----
-
 pub const kCGEventSourceStatePrivate: CGEventSourceStateID = -1;
 pub const kCGEventSourceStateCombinedSessionState: CGEventSourceStateID = 0;
 pub const kCGEventSourceStateHIDSystemState: CGEventSourceStateID = 1;
 
+pub const kCGEventFilterMaskPermitLocalMouseEvents: CGEventFilterMask = 0x0000_0001;
+pub const kCGEventFilterMaskPermitLocalKeyboardEvents: CGEventFilterMask = 0x0000_0002;
+pub const kCGEventFilterMaskPermitSystemDefinedEvents: CGEventFilterMask = 0x0000_0004;
+pub const kCGEventFilterMaskPermitAllEvents: CGEventFilterMask =
+    kCGEventFilterMaskPermitLocalMouseEvents
+        | kCGEventFilterMaskPermitLocalKeyboardEvents
+        | kCGEventFilterMaskPermitSystemDefinedEvents;
+
+pub const kCGEventSuppressionStateSuppressionInterval: CGEventSuppressionState = 0;
+pub const kCGEventSuppressionStateRemoteMouseDrag: CGEventSuppressionState = 1;
+
 pub type CGEventTapCallBack = unsafe extern "C" fn(
-    proxy: *mut c_void,
+    proxy: CGEventTapProxy,
     ty: CGEventType,
     event: CGEventRef,
     user_info: *mut c_void,
@@ -109,7 +121,11 @@ pub type CGEventTapCallBack = unsafe extern "C" fn(
 extern "C" {
     pub static kCFAllocatorDefault: CFAllocatorRef;
     pub static kCFRunLoopCommonModes: CFStringRef;
+
     pub fn CFRelease(cf: CFTypeRef);
+    pub fn CFDataCreate(allocator: CFAllocatorRef, bytes: *const u8, length: CFIndex) -> CFDataRef;
+    pub fn CFDataGetLength(data: CFDataRef) -> CFIndex;
+    pub fn CFDataGetBytePtr(data: CFDataRef) -> *const u8;
     pub fn CFRunLoopGetCurrent() -> CFRunLoopRef;
     pub fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
     pub fn CFRunLoopRemoveSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
@@ -122,11 +138,50 @@ extern "C" {
     ) -> CFRunLoopSourceRef;
     pub fn CFMachPortInvalidate(port: CFMachPortRef);
 
-    // CGEventSource
+    pub fn CGEventSourceGetTypeID() -> CFTypeID;
     pub fn CGEventSourceCreate(state_id: CGEventSourceStateID) -> CGEventSourceRef;
+    pub fn CGEventSourceGetKeyboardType(source: CGEventSourceRef) -> CGEventSourceKeyboardType;
+    pub fn CGEventSourceSetKeyboardType(
+        source: CGEventSourceRef,
+        keyboard_type: CGEventSourceKeyboardType,
+    );
+    pub fn CGEventSourceGetPixelsPerLine(source: CGEventSourceRef) -> f64;
+    pub fn CGEventSourceSetPixelsPerLine(source: CGEventSourceRef, pixels_per_line: f64);
+    pub fn CGEventSourceGetSourceStateID(source: CGEventSourceRef) -> CGEventSourceStateID;
+    pub fn CGEventSourceButtonState(state_id: CGEventSourceStateID, button: CGMouseButton) -> bool;
+    pub fn CGEventSourceKeyState(state_id: CGEventSourceStateID, key: CGKeyCode) -> bool;
+    pub fn CGEventSourceFlagsState(state_id: CGEventSourceStateID) -> CGEventFlags;
+    pub fn CGEventSourceSecondsSinceLastEventType(
+        state_id: CGEventSourceStateID,
+        event_type: CGEventType,
+    ) -> CFTimeInterval;
+    pub fn CGEventSourceCounterForEventType(
+        state_id: CGEventSourceStateID,
+        event_type: CGEventType,
+    ) -> u32;
+    pub fn CGEventSourceSetUserData(source: CGEventSourceRef, user_data: i64);
+    pub fn CGEventSourceGetUserData(source: CGEventSourceRef) -> i64;
+    pub fn CGEventSourceSetLocalEventsFilterDuringSuppressionState(
+        source: CGEventSourceRef,
+        filter: CGEventFilterMask,
+        state: CGEventSuppressionState,
+    );
+    pub fn CGEventSourceGetLocalEventsFilterDuringSuppressionState(
+        source: CGEventSourceRef,
+        state: CGEventSuppressionState,
+    ) -> CGEventFilterMask;
+    pub fn CGEventSourceSetLocalEventsSuppressionInterval(
+        source: CGEventSourceRef,
+        seconds: CFTimeInterval,
+    );
+    pub fn CGEventSourceGetLocalEventsSuppressionInterval(
+        source: CGEventSourceRef,
+    ) -> CFTimeInterval;
 
-    // CGEvent — create
+    pub fn CGEventGetTypeID() -> CFTypeID;
     pub fn CGEventCreate(source: CGEventSourceRef) -> CGEventRef;
+    pub fn CGEventCreateData(allocator: CFAllocatorRef, event: CGEventRef) -> CFDataRef;
+    pub fn CGEventCreateFromData(allocator: CFAllocatorRef, data: CFDataRef) -> CGEventRef;
     pub fn CGEventCreateMouseEvent(
         source: CGEventSourceRef,
         mouse_type: CGEventType,
@@ -143,18 +198,31 @@ extern "C" {
         units: CGScrollEventUnit,
         wheel_count: u32,
         wheel1: i32,
-        // wheel2/3 intentionally elided — pass 0 explicitly via wrapper.
     ) -> CGEventRef;
-
-    // CGEvent — accessors
+    pub fn CGEventCreateScrollWheelEvent2(
+        source: CGEventSourceRef,
+        units: CGScrollEventUnit,
+        wheel_count: u32,
+        wheel1: i32,
+        wheel2: i32,
+        wheel3: i32,
+    ) -> CGEventRef;
+    pub fn CGEventCreateCopy(event: CGEventRef) -> CGEventRef;
+    pub fn CGEventCreateSourceFromEvent(event: CGEventRef) -> CGEventSourceRef;
+    pub fn CGEventSetSource(event: CGEventRef, source: CGEventSourceRef);
     pub fn CGEventGetType(event: CGEventRef) -> CGEventType;
+    pub fn CGEventSetType(event: CGEventRef, ty: CGEventType);
+    pub fn CGEventGetTimestamp(event: CGEventRef) -> CGEventTimestamp;
+    pub fn CGEventSetTimestamp(event: CGEventRef, timestamp: CGEventTimestamp);
     pub fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
+    pub fn CGEventGetUnflippedLocation(event: CGEventRef) -> CGPoint;
     pub fn CGEventSetLocation(event: CGEventRef, location: CGPoint);
     pub fn CGEventGetFlags(event: CGEventRef) -> CGEventFlags;
     pub fn CGEventSetFlags(event: CGEventRef, flags: CGEventFlags);
-    pub fn CGEventGetTimestamp(event: CGEventRef) -> CGEventTimestamp;
     pub fn CGEventGetIntegerValueField(event: CGEventRef, field: CGEventField) -> i64;
     pub fn CGEventSetIntegerValueField(event: CGEventRef, field: CGEventField, value: i64);
+    pub fn CGEventGetDoubleValueField(event: CGEventRef, field: CGEventField) -> f64;
+    pub fn CGEventSetDoubleValueField(event: CGEventRef, field: CGEventField, value: f64);
     pub fn CGEventKeyboardSetUnicodeString(
         event: CGEventRef,
         string_length: usize,
@@ -166,12 +234,6 @@ extern "C" {
         actual_string_length: *mut usize,
         unicode_string: *mut u16,
     );
-
-    // CGEvent — post
-    pub fn CGEventPost(tap: CGEventTapLocation, event: CGEventRef);
-    pub fn CGEventPostToPid(pid: i32, event: CGEventRef);
-
-    // CGEventTap
     pub fn CGEventTapCreate(
         tap: CGEventTapLocation,
         place: CGEventTapPlacement,
@@ -180,19 +242,35 @@ extern "C" {
         callback: CGEventTapCallBack,
         user_info: *mut c_void,
     ) -> CFMachPortRef;
+    pub fn CGEventTapCreateForPSN(
+        process_serial_number: *mut c_void,
+        place: CGEventTapPlacement,
+        options: CGEventTapOptions,
+        events_of_interest: CGEventMask,
+        callback: CGEventTapCallBack,
+        user_info: *mut c_void,
+    ) -> CFMachPortRef;
+    pub fn CGEventTapCreateForPid(
+        pid: i32,
+        place: CGEventTapPlacement,
+        options: CGEventTapOptions,
+        events_of_interest: CGEventMask,
+        callback: CGEventTapCallBack,
+        user_info: *mut c_void,
+    ) -> CFMachPortRef;
     pub fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
     pub fn CGEventTapIsEnabled(tap: CFMachPortRef) -> bool;
+    pub fn CGEventTapPostEvent(proxy: CGEventTapProxy, event: CGEventRef);
+    pub fn CGEventPost(tap: CGEventTapLocation, event: CGEventRef);
+    pub fn CGEventPostToPSN(process_serial_number: *mut c_void, event: CGEventRef);
+    pub fn CGEventPostToPid(pid: i32, event: CGEventRef);
 }
 
-/// Build a `CGEventMask` covering the given event types.
 #[must_use]
 pub const fn cg_event_mask_bit(ty: CGEventType) -> CGEventMask {
-    1u64 << ty
+    1_u64 << ty
 }
 
-/// `kCGEventFieldKeyboardEventKeycode` — read with `CGEventGetIntegerValueField`.
 pub const kCGKeyboardEventKeycode: CGEventField = 9;
-/// `kCGScrollWheelEventDeltaAxis1` field id.
 pub const kCGScrollWheelEventDeltaAxis1: CGEventField = 11;
-/// `kCGScrollWheelEventDeltaAxis2` field id.
 pub const kCGScrollWheelEventDeltaAxis2: CGEventField = 12;

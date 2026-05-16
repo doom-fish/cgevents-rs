@@ -31,9 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(t) => t,
         Err(e) => {
             eprintln!("\nFAILED to create tap: {e}\n");
-            eprintln!(
-                "Grant Accessibility to: target/debug/examples/03_keyboard_tap"
-            );
+            eprintln!("Grant Accessibility to: target/debug/examples/03_keyboard_tap");
             eprintln!("System Settings → Privacy & Security → Accessibility → +");
             return Ok(());
         }

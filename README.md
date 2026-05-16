@@ -2,7 +2,7 @@
 
 Safe Rust bindings for Apple's [Quartz Event Services](https://developer.apple.com/documentation/coregraphics/quartz_event_services) on macOS — synthesise + intercept keyboard, mouse, and scroll-wheel events globally.
 
-> **Status:** experimental. v0.1 ships keyboard / mouse / scroll synthesis, unicode `type_string`, event tap interception, and ~25 common US-QWERTY keycodes. Per-pixel mouse delta + tablet-pointer events + clipboard integration land in v0.2.
+> **Status:** actively developed. v0.4 ships keyboard / mouse / scroll synthesis, unicode `type_string`, event tap interception, event/source inspection helpers, multi-axis scroll creation, and common US-QWERTY keycodes.
 
 Pure C — **zero Swift bridge** (like `videotoolbox`, `imageio`).
 
@@ -12,7 +12,6 @@ Pure C — **zero Swift bridge** (like `videotoolbox`, `imageio`).
 use cgevents::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Press Cmd+A
     KeyEvent::down(Keycode::A)
         .with_modifiers(ModifierFlags::COMMAND)
         .post(TapLocation::Session)?;
@@ -20,18 +19,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_modifiers(ModifierFlags::COMMAND)
         .post(TapLocation::Session)?;
 
-    // Type a string (works with unicode + emoji — bypasses keymap)
     type_string("Hello, 🌍 世界\n", TapLocation::Session)?;
-
-    // Mouse: move + click
     MouseEvent::move_to(Point::new(500.0, 300.0)).post(TapLocation::Session)?;
-    MouseEvent::button_down(Point::new(500.0, 300.0), MouseButton::Left)
-        .post(TapLocation::Session)?;
-    MouseEvent::button_up(Point::new(500.0, 300.0), MouseButton::Left)
-        .post(TapLocation::Session)?;
+    ScrollEvent::pixels_2d(80, 20).post(TapLocation::Session)?;
+    Ok(())
+}
+```
 
-    // Scroll up 5 lines
-    ScrollEvent::lines(5).post(TapLocation::Session)?;
+## Quick start — inspect events and sources
+
+```rust,no_run
+use cgevents::prelude::*;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = EventSource::private()?;
+    source.set_user_data(42);
+
+    let event = MouseEvent::move_to(Point::new(400.0, 300.0)).build(&source)?;
+    let bytes = event.data()?;
+    let copy = Event::from_data(&bytes)?.copy()?;
+
+    println!("state_id={} flags={:?}", source.source_state_id(), source.flags_state());
+    println!("event at {:?} / {:?}", copy.location(), copy.unflipped_location());
     Ok(())
 }
 ```
@@ -44,44 +53,31 @@ use cgevents::prelude::*;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tap = EventTap::keyboard(|event| {
         println!("keycode={} flags={:?}", event.keycode(), event.flags());
-        TapAction::Pass  // or TapAction::Drop to swallow it
+        TapAction::Pass
     })?;
-    tap.run();  // blocks the current thread's run loop
+    tap.run();
     Ok(())
 }
 ```
 
 ## Permissions
 
-* **`CGEventPost`** — needs **no permission**. Synthesised events go through cleanly.
-* **`CGEventTap`** (interception) — requires **Accessibility permission** (System Settings → Privacy & Security → Accessibility). The first run will surface `CGError::TapCreateFailed`; grant the permission, restart, and the tap will work.
-
-## Pipeline composition
-
-```text
-cgevents (synth) ──► another macOS app
-cgevents (tap)   ◄── physical keyboard/mouse
-                       │
-                       ▼
-                custom hotkey handler
-                custom macro recorder
-                custom remap engine (Karabiner-style)
-```
-
-Pairs naturally with [`screencapturekit`](https://github.com/doom-fish/screencapturekit-rs) (record what the synthesized input does) and [`carbonhotkey`](https://github.com/doom-fish/carbonhotkey-rs) (lighter-weight hotkey-only interception).
+* **`CGEventPost`** — needs **no permission**.
+* **`CGEventTap`** (interception) — requires **Accessibility permission**.
 
 ## Roadmap
 
 - [x] `KeyEvent::{down, up}` with modifier flags
 - [x] `MouseEvent::{move_to, button_down, button_up}`
-- [x] `ScrollEvent::{lines, pixels}`
+- [x] `ScrollEvent::{lines, pixels}` plus multi-axis `*_2d` / `*_3d`
 - [x] `type_string` for unicode-payload input
 - [x] `EventTap::{new, keyboard, mouse}` with `Pass`/`Drop` actions
-- [x] ~25 common US-QWERTY keycode constants
-- [ ] All ~120 documented Apple keycodes (full enum)
-- [ ] `CGEventPostToPid` ergonomics + per-app event injection helper
-- [ ] Tablet-pointer + tablet-proximity events
-- [ ] Async `EventTap` driver that doesn't require its own run loop
+- [x] `Event` helpers for copy, serialization, source extraction, and location/field access
+- [x] `EventSource` helpers for keyboard type, pixels-per-line, user data, source-state queries, and suppression tuning
+- [x] `CGEventPostToPid` ergonomics on `Event`, `KeyEvent`, `MouseEvent`, and `ScrollEvent`
+- [ ] Per-process event taps (`CGEventTapCreateForPid`) convenience wrappers
+- [ ] Tablet-pointer + tablet-proximity event builders
+- [ ] Full Apple keycode set (beyond the common US-QWERTY subset)
 - [ ] Permission-helper that opens System Settings to the Accessibility pane
 
 ## License

@@ -1,11 +1,11 @@
 [package]
 name = "cgevents"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/doom-fish/cgevents-rs"
 repository = "https://github.com/doom-fish/cgevents-rs"
-description = "Safe Rust bindings for Apple's Quartz Event Services — synthesise + intercept keyboard, mouse, and scroll events globally on macOS"
+description = "Safe Rust bindings for Apple's Quartz Event Services — synthesise, inspect, and intercept input on macOS"
 authors = ["Per Johansson <per@doom.fish>"]
 keywords = ["input", "keyboard", "mouse", "macos", "automation"]
 categories = ["api-bindings", "os::macos-apis"]
@@ -14,6 +14,8 @@ readme = "README.md"
 build = "build.rs"
 include = [
     "src/**/*",
+    "examples/**/*",
+    "tests/**/*",
     "build.rs",
     "Cargo.toml",
     "README.md",
@@ -55,6 +57,12 @@ name = "02_type_string"
 
 [[example]]
 name = "03_keyboard_tap"
+
+[[example]]
+name = "04_event_roundtrip"
+
+[[example]]
+name = "05_source_state"
 
 [profile.release]
 debug = "full"

@@ -6,16 +6,14 @@ use core::ptr;
 use std::sync::Mutex;
 
 use crate::error::CGError;
-use crate::event::{ModifierFlags, Point, TapLocation};
+use crate::event::{Event, ModifierFlags, Point, TapLocation};
 use crate::ffi;
 
 /// What the tap callback wants to do with an intercepted event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TapAction {
-    /// Pass the event through unchanged.
     Pass,
-    /// Drop the event (it never reaches its destination).
     Drop,
 }
 
@@ -23,38 +21,38 @@ pub enum TapAction {
 /// the callback.
 pub struct TappedEvent<'a> {
     ptr: ffi::CGEventRef,
+    proxy: ffi::CGEventTapProxy,
     _phantom: core::marker::PhantomData<&'a ()>,
 }
 
 impl TappedEvent<'_> {
-    /// Cast to a borrowed-but-non-owning `Event` for accessor convenience.
-    /// The returned `Event` does NOT release the underlying ref on drop.
     const fn view(&self) -> ManualDropEvent {
         ManualDropEvent { ptr: self.ptr }
     }
 
-    /// Event type code.
     #[must_use]
     pub fn event_type(&self) -> ffi::CGEventType {
         self.view().event_type()
     }
 
-    /// Cursor location carried by this event.
     #[must_use]
     pub fn location(&self) -> Point {
         self.view().location()
     }
 
-    /// Modifier flags on this event.
     #[must_use]
     pub fn flags(&self) -> ModifierFlags {
         self.view().flags()
     }
 
-    /// Keycode (only meaningful for keyboard events).
     #[must_use]
     pub fn keycode(&self) -> u16 {
         self.view().keycode()
+    }
+
+    /// Post a synthetic event back into the stream from this tap point.
+    pub fn post(&self, event: &Event) {
+        unsafe { ffi::CGEventTapPostEvent(self.proxy, event.ptr) };
     }
 }
 
@@ -73,8 +71,7 @@ impl ManualDropEvent {
         ModifierFlags::from_bits_truncate(unsafe { ffi::CGEventGetFlags(self.ptr) })
     }
     fn keycode(&self) -> u16 {
-        let v =
-            unsafe { ffi::CGEventGetIntegerValueField(self.ptr, ffi::kCGKeyboardEventKeycode) };
+        let v = unsafe { ffi::CGEventGetIntegerValueField(self.ptr, ffi::kCGKeyboardEventKeycode) };
         u16::try_from(v).unwrap_or(0)
     }
 }
@@ -116,7 +113,7 @@ impl Drop for EventTap {
 }
 
 unsafe extern "C" fn trampoline(
-    _proxy: *mut c_void,
+    proxy: ffi::CGEventTapProxy,
     _ty: ffi::CGEventType,
     event: ffi::CGEventRef,
     user_info: *mut c_void,
@@ -124,9 +121,13 @@ unsafe extern "C" fn trampoline(
     let inner: &TapInner = unsafe { &*user_info.cast::<TapInner>() };
     let tapped = TappedEvent {
         ptr: event,
+        proxy,
         _phantom: core::marker::PhantomData,
     };
-    let action = inner.callback.lock().map_or(TapAction::Pass, |mut cb| cb(&tapped));
+    let action = inner
+        .callback
+        .lock()
+        .map_or(TapAction::Pass, |mut cb| cb(&tapped));
     match action {
         TapAction::Pass => event,
         TapAction::Drop => ptr::null_mut(),
@@ -135,19 +136,13 @@ unsafe extern "C" fn trampoline(
 
 impl EventTap {
     /// Create a tap that observes / drops events of every type matching
-    /// `events_mask`. Bind it to the current thread's run loop and call
-    /// [`Self::run`] (which never returns until [`Event`] processing is
-    /// stopped from another thread).
+    /// `events_mask`.
     ///
     /// # Errors
     ///
     /// Returns [`CGError::TapCreateFailed`] when Apple refuses — typically
     /// missing Accessibility permission.
-    pub fn new<F>(
-        location: TapLocation,
-        events_mask: u64,
-        callback: F,
-    ) -> Result<Self, CGError>
+    pub fn new<F>(location: TapLocation, events_mask: u64, callback: F) -> Result<Self, CGError>
     where
         F: FnMut(&TappedEvent<'_>) -> TapAction + Send + 'static,
     {
@@ -170,9 +165,8 @@ impl EventTap {
             return Err(CGError::TapCreateFailed);
         }
 
-        let run_loop_source = unsafe {
-            ffi::CFMachPortCreateRunLoopSource(ffi::kCFAllocatorDefault, port, 0)
-        };
+        let run_loop_source =
+            unsafe { ffi::CFMachPortCreateRunLoopSource(ffi::kCFAllocatorDefault, port, 0) };
         if run_loop_source.is_null() {
             unsafe {
                 ffi::CFMachPortInvalidate(port);
@@ -197,8 +191,7 @@ impl EventTap {
         })
     }
 
-    /// Convenience constructor: tap every keyboard event (key down + up
-    /// + flags-changed).
+    /// Convenience constructor: tap every keyboard event.
     ///
     /// # Errors
     ///
@@ -213,8 +206,7 @@ impl EventTap {
         Self::new(TapLocation::Session, mask, callback)
     }
 
-    /// Convenience constructor: tap every mouse event (move + clicks +
-    /// drag + scroll).
+    /// Convenience constructor: tap every mouse event.
     ///
     /// # Errors
     ///
@@ -234,14 +226,12 @@ impl EventTap {
         Self::new(TapLocation::Session, mask, callback)
     }
 
-    /// Whether the tap is currently enabled.
     #[must_use]
     pub fn is_enabled(&self) -> bool {
         unsafe { ffi::CGEventTapIsEnabled(self.port) }
     }
 
-    /// Run the current thread's run loop forever (or until `CFRunLoopStop`
-    /// is called from another thread). Blocks.
+    /// Run the current thread's run loop forever. Blocks.
     pub fn run(&self) {
         unsafe { ffi::CFRunLoopRun() };
     }

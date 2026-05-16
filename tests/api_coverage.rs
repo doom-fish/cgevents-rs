@@ -1,8 +1,8 @@
 //! API-surface coverage harness for `cgevents`.
 //!
 //! `Quartz Event Services` lives inside `CoreGraphics` as a pure-C header
-//! triplet (`CGEvent.h`, `CGEventSource.h`, `CGEventTypes.h`). Mirrors
-//! the apple-cf / videotoolbox / imageio C-function-regex pattern.
+//! pair (`CGEvent.h`, `CGEventSource.h`). Mirrors the apple-cf /
+//! videotoolbox / imageio C-function-regex pattern.
 
 #![allow(clippy::cast_precision_loss, clippy::iter_on_single_items)]
 
@@ -39,17 +39,9 @@ fn extract_rust_externs() -> BTreeSet<String> {
     re.captures_iter(&s).map(|c| c[1].to_string()).collect()
 }
 
-fn report(
-    name: &str,
-    apple: &BTreeSet<String>,
-    ours: &BTreeSet<String>,
-    omitted: &BTreeSet<String>,
-) {
+fn report(name: &str, apple: &BTreeSet<String>, ours: &BTreeSet<String>) {
     let wrapped: BTreeSet<&String> = apple.intersection(ours).collect();
-    let missing: BTreeSet<&String> = apple
-        .difference(ours)
-        .filter(|s| !omitted.contains(*s))
-        .collect();
+    let missing: BTreeSet<&String> = apple.difference(ours).collect();
     let coverable = wrapped.len() + missing.len();
     let pct = if coverable == 0 {
         100.0
@@ -57,82 +49,33 @@ fn report(
         wrapped.len() as f64 / coverable as f64 * 100.0
     };
     println!(
-        "\n=== {name} ===\n  apple={}, omitted={}, coverable={coverable}, wrapped={}, missing={}, pct={pct:.1}%",
+        "\n=== {name} ===\n  apple={}, wrapped={}, missing={}, pct={pct:.1}%",
         apple.len(),
-        omitted.len(),
         wrapped.len(),
         missing.len(),
     );
     if !missing.is_empty() {
-        for s in &missing {
-            println!("  - {s}");
+        for sym in &missing {
+            println!("  - {sym}");
         }
     }
     assert!(pct >= 100.0, "{name}: {pct:.1}%");
 }
 
-fn omitted_set<const N: usize>(items: [&str; N]) -> BTreeSet<String> {
-    items.into_iter().map(String::from).collect()
-}
-
 #[test]
 fn cg_event_coverage() {
-    let header = read_header("CGEvent");
-    let apple = extract_c_functions("CGEvent", &header);
-    let ours = extract_rust_externs();
-    let omitted = omitted_set([
-        // Type-id boilerplate.
-        "CGEventGetTypeID",
-        // Less-common reads we don't surface in v0.1 (callers can read
-        // raw u64 timestamps via CGEventGetTimestamp instead):
-        "CGEventCreateData",
-        "CGEventCreateFromData",
-        "CGEventCreateCopy",
-        "CGEventCreateSourceFromEvent",
-        "CGEventGetUnflippedLocation",
-        "CGEventGetDoubleValueField",
-        "CGEventSetDoubleValueField",
-        "CGEventSetSource",
-        "CGEventSetType",
-        "CGEventSetTimestamp",
-        "CGEventPostToPSN",
-        // Tap variants we don't (yet) wrap — v0.2 will surface
-        // CGEventTapCreateForPid + CGEventTapCreateForPSN + the AnnotatedSession variant.
-        "CGEventTapCreateForPid",
-        "CGEventTapCreateForPSN",
-        "CGEventTapPostEvent",
-        // Multi-axis scroll variant — v0.2. Single-axis scroll covered by
-        // CGEventCreateScrollWheelEvent.
-        "CGEventCreateScrollWheelEvent2",
-    ]);
-    report("CGEvent", &apple, &ours, &omitted);
+    report(
+        "CGEvent",
+        &extract_c_functions("CGEvent", &read_header("CGEvent")),
+        &extract_rust_externs(),
+    );
 }
 
 #[test]
 fn cg_event_source_coverage() {
-    let header = read_header("CGEventSource");
-    let apple = extract_c_functions("CGEventSource", &header);
-    let ours = extract_rust_externs();
-    let omitted = omitted_set([
-        "CGEventSourceGetTypeID",
-        // Tunables (key-repeat threshold, pixel pressure, etc.) — v0.2.
-        "CGEventSourceGetSourceStateID",
-        "CGEventSourceKeyState",
-        "CGEventSourceFlagsState",
-        "CGEventSourceCounterForEventType",
-        "CGEventSourceSecondsSinceLastEventType",
-        "CGEventSourceButtonState",
-        "CGEventSourceSetLocalEventsFilterDuringSuppressionState",
-        "CGEventSourceGetLocalEventsFilterDuringSuppressionState",
-        "CGEventSourceGetLocalEventsSuppressionInterval",
-        "CGEventSourceSetLocalEventsSuppressionInterval",
-        "CGEventSourceGetPixelsPerLine",
-        "CGEventSourceSetPixelsPerLine",
-        "CGEventSourceGetUserData",
-        "CGEventSourceSetUserData",
-        "CGEventSourceSetKeyboardType",
-        "CGEventSourceGetKeyboardType",
-        "CGEventSourceCreateInputSource",
-    ]);
-    report("CGEventSource", &apple, &ours, &omitted);
+    report(
+        "CGEventSource",
+        &extract_c_functions("CGEventSource", &read_header("CGEventSource")),
+        &extract_rust_externs(),
+    );
 }

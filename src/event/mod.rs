@@ -1,5 +1,4 @@
-//! High-level `Event` wrapper + `KeyEvent`, `MouseEvent`, `ScrollEvent`
-//! builders that synthesise + post events.
+//! High-level `Event` wrapper + builders that synthesise + post events.
 
 use core::ptr;
 
@@ -78,14 +77,20 @@ impl Point {
 }
 
 impl From<Point> for ffi::CGPoint {
-    fn from(p: Point) -> Self {
-        Self { x: p.x, y: p.y }
+    fn from(point: Point) -> Self {
+        Self {
+            x: point.x,
+            y: point.y,
+        }
     }
 }
 
 impl From<ffi::CGPoint> for Point {
-    fn from(p: ffi::CGPoint) -> Self {
-        Self { x: p.x, y: p.y }
+    fn from(point: ffi::CGPoint) -> Self {
+        Self {
+            x: point.x,
+            y: point.y,
+        }
     }
 }
 
@@ -107,10 +112,99 @@ impl Drop for Event {
 }
 
 impl Event {
+    #[must_use]
+    pub fn type_id() -> ffi::CFTypeID {
+        unsafe { ffi::CGEventGetTypeID() }
+    }
+
+    /// Create an empty generic event.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CGError::EventCreateFailed`] if Apple returns NULL.
+    pub fn new(source: Option<&EventSource>) -> Result<Self, CGError> {
+        let ptr =
+            unsafe { ffi::CGEventCreate(source.map_or(ptr::null_mut(), |source| source.ptr)) };
+        if ptr.is_null() {
+            Err(CGError::EventCreateFailed("CGEventCreate".into()))
+        } else {
+            Ok(Self { ptr })
+        }
+    }
+
+    /// Serialize the event to bytes using `CGEventCreateData`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CGError::EventCreateFailed`] if Apple returns NULL.
+    pub fn data(&self) -> Result<Vec<u8>, CGError> {
+        let data = unsafe { ffi::CGEventCreateData(ffi::kCFAllocatorDefault, self.ptr) };
+        if data.is_null() {
+            return Err(CGError::EventCreateFailed("CGEventCreateData".into()));
+        }
+        let bytes = cfdata_to_vec(data);
+        unsafe { ffi::CFRelease(data.cast()) };
+        Ok(bytes)
+    }
+
+    /// Rehydrate an event from bytes created by [`Self::data`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CGError::EventCreateFailed`] if Apple returns NULL.
+    pub fn from_data(data: &[u8]) -> Result<Self, CGError> {
+        let data = make_cfdata(data)?;
+        let ptr = unsafe { ffi::CGEventCreateFromData(ffi::kCFAllocatorDefault, data) };
+        unsafe { ffi::CFRelease(data.cast()) };
+        if ptr.is_null() {
+            Err(CGError::EventCreateFailed("CGEventCreateFromData".into()))
+        } else {
+            Ok(Self { ptr })
+        }
+    }
+
+    /// Deep-copy the event.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CGError::EventCreateFailed`] if Apple returns NULL.
+    pub fn copy(&self) -> Result<Self, CGError> {
+        let ptr = unsafe { ffi::CGEventCreateCopy(self.ptr) };
+        if ptr.is_null() {
+            Err(CGError::EventCreateFailed("CGEventCreateCopy".into()))
+        } else {
+            Ok(Self { ptr })
+        }
+    }
+
+    /// Build a compatible event source from this event.
+    #[must_use]
+    pub fn source(&self) -> Option<EventSource> {
+        let ptr = unsafe { ffi::CGEventCreateSourceFromEvent(self.ptr) };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(EventSource { ptr })
+        }
+    }
+
+    pub fn set_source(&self, source: Option<&EventSource>) {
+        unsafe {
+            ffi::CGEventSetSource(
+                self.ptr,
+                source.map_or(ptr::null_mut(), |source| source.ptr),
+            );
+        };
+    }
+
     /// Get the event type (e.g. `kCGEventKeyDown`).
     #[must_use]
     pub fn event_type(&self) -> ffi::CGEventType {
         unsafe { ffi::CGEventGetType(self.ptr) }
+    }
+
+    pub fn set_type(&self, ty: ffi::CGEventType) {
+        unsafe { ffi::CGEventSetType(self.ptr, ty) };
     }
 
     /// Get the cursor position carried by this event.
@@ -119,94 +213,86 @@ impl Event {
         Point::from(unsafe { ffi::CGEventGetLocation(self.ptr) })
     }
 
+    /// Get the lower-left-origin coordinates carried by this event.
+    #[must_use]
+    pub fn unflipped_location(&self) -> Point {
+        Point::from(unsafe { ffi::CGEventGetUnflippedLocation(self.ptr) })
+    }
+
+    pub fn set_location(&self, location: Point) {
+        unsafe { ffi::CGEventSetLocation(self.ptr, location.into()) };
+    }
+
     /// Get the modifier flags currently set on this event.
     #[must_use]
     pub fn flags(&self) -> ModifierFlags {
         ModifierFlags::from_bits_truncate(unsafe { ffi::CGEventGetFlags(self.ptr) })
     }
 
-    /// Set the modifier flags on this event.
     pub fn set_flags(&self, flags: ModifierFlags) {
         unsafe { ffi::CGEventSetFlags(self.ptr, flags.bits()) };
     }
 
-    /// Apply a unicode string to a keyboard event (so it generates that
-    /// text irrespective of the keymap).
     pub fn set_unicode_string(&self, s: &str) {
         let utf16: Vec<u16> = s.encode_utf16().collect();
-        unsafe {
-            ffi::CGEventKeyboardSetUnicodeString(self.ptr, utf16.len(), utf16.as_ptr());
-        }
+        unsafe { ffi::CGEventKeyboardSetUnicodeString(self.ptr, utf16.len(), utf16.as_ptr()) };
     }
 
-    /// Read the keycode field (only meaningful for keyboard events).
     #[must_use]
     pub fn keycode(&self) -> u16 {
-        let v = unsafe { ffi::CGEventGetIntegerValueField(self.ptr, ffi::kCGKeyboardEventKeycode) };
-        u16::try_from(v).unwrap_or(0)
+        let value =
+            unsafe { ffi::CGEventGetIntegerValueField(self.ptr, ffi::kCGKeyboardEventKeycode) };
+        u16::try_from(value).unwrap_or(0)
     }
 
-    /// Read an arbitrary integer field. See `CGEventTypes.h` for valid
-    /// `CGEventField` constants.
     #[must_use]
     pub fn integer_field(&self, field: ffi::CGEventField) -> i64 {
         unsafe { ffi::CGEventGetIntegerValueField(self.ptr, field) }
     }
 
-    /// Write an arbitrary integer field.
     pub fn set_integer_field(&self, field: ffi::CGEventField, value: i64) {
         unsafe { ffi::CGEventSetIntegerValueField(self.ptr, field, value) };
     }
 
-    /// Read this event's timestamp (Mach absolute nanoseconds since boot).
+    #[must_use]
+    pub fn double_field(&self, field: ffi::CGEventField) -> f64 {
+        unsafe { ffi::CGEventGetDoubleValueField(self.ptr, field) }
+    }
+
+    pub fn set_double_field(&self, field: ffi::CGEventField, value: f64) {
+        unsafe { ffi::CGEventSetDoubleValueField(self.ptr, field, value) };
+    }
+
     #[must_use]
     pub fn timestamp(&self) -> u64 {
         unsafe { ffi::CGEventGetTimestamp(self.ptr) }
     }
 
-    /// Decode the Unicode characters this event would type (mirror of
-    /// `set_unicode_string`). Returns an empty string if Apple's
-    /// buffer is empty.
+    pub fn set_timestamp(&self, timestamp: u64) {
+        unsafe { ffi::CGEventSetTimestamp(self.ptr, timestamp) };
+    }
+
     #[must_use]
     pub fn unicode_string(&self) -> String {
         const MAX: usize = 32;
-        let mut buf = [0u16; MAX];
-        let mut actual: usize = 0;
+        let mut buf = [0_u16; MAX];
+        let mut actual = 0_usize;
         unsafe {
-            ffi::CGEventKeyboardGetUnicodeString(
-                self.ptr,
-                MAX,
-                &mut actual,
-                buf.as_mut_ptr(),
-            );
-        }
+            ffi::CGEventKeyboardGetUnicodeString(self.ptr, MAX, &mut actual, buf.as_mut_ptr());
+        };
         String::from_utf16_lossy(&buf[..actual.min(MAX)])
     }
 
-    /// Post the event to the requested tap location.
     pub fn post(&self, location: TapLocation) {
         unsafe { ffi::CGEventPost(location.as_raw(), self.ptr) };
     }
 
-    /// Post the event to a specific PID.
     pub fn post_to_pid(&self, pid: i32) {
         unsafe { ffi::CGEventPostToPid(pid, self.ptr) };
     }
 }
 
-// ---- Keyboard ----
-
 /// Build + post a keyboard event.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use cgevents::prelude::*;
-/// // Press + release Cmd+A
-/// KeyEvent::down(Keycode::A).with_modifiers(ModifierFlags::COMMAND).post(TapLocation::Session)?;
-/// KeyEvent::up(Keycode::A).with_modifiers(ModifierFlags::COMMAND).post(TapLocation::Session)?;
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
 #[derive(Debug, Clone)]
 pub struct KeyEvent {
     keycode: u16,
@@ -216,7 +302,6 @@ pub struct KeyEvent {
 }
 
 impl KeyEvent {
-    /// Construct a key-down event for `keycode`.
     #[must_use]
     pub const fn down(keycode: u16) -> Self {
         Self {
@@ -227,7 +312,6 @@ impl KeyEvent {
         }
     }
 
-    /// Construct a key-up event for `keycode`.
     #[must_use]
     pub const fn up(keycode: u16) -> Self {
         Self {
@@ -238,16 +322,12 @@ impl KeyEvent {
         }
     }
 
-    /// Apply modifier flags.
     #[must_use]
     pub const fn with_modifiers(mut self, flags: ModifierFlags) -> Self {
         self.flags = flags;
         self
     }
 
-    /// Force the event to insert this exact text — bypasses keymap
-    /// translation. Useful for typing unicode that has no direct
-    /// keycode (`KeyEvent::down(0).with_unicode("é")`).
     #[must_use]
     pub fn with_unicode(mut self, s: &str) -> Self {
         self.unicode = Some(s.to_string());
@@ -260,11 +340,12 @@ impl KeyEvent {
     ///
     /// Returns [`CGError::EventCreateFailed`] if Apple returns NULL.
     pub fn build(&self, source: &EventSource) -> Result<Event, CGError> {
-        let ptr = unsafe {
-            ffi::CGEventCreateKeyboardEvent(source.ptr, self.keycode, self.pressed)
-        };
+        let ptr =
+            unsafe { ffi::CGEventCreateKeyboardEvent(source.ptr, self.keycode, self.pressed) };
         if ptr.is_null() {
-            return Err(CGError::EventCreateFailed("CGEventCreateKeyboardEvent".into()));
+            return Err(CGError::EventCreateFailed(
+                "CGEventCreateKeyboardEvent".into(),
+            ));
         }
         let event = Event { ptr };
         if !self.flags.is_empty() {
@@ -288,9 +369,7 @@ impl KeyEvent {
         Ok(())
     }
 
-    /// Build + post the event to a specific process by PID. Lets you
-    /// target a specific application instead of broadcasting to the
-    /// whole session. (Equivalent to `CGEventPostToPid`.)
+    /// Build + post the event to a specific process by PID.
     ///
     /// # Errors
     ///
@@ -312,7 +391,6 @@ pub struct MouseEvent {
 }
 
 impl MouseEvent {
-    /// Move the cursor to `position` (no button state change).
     #[must_use]
     pub const fn move_to(position: Point) -> Self {
         Self {
@@ -322,7 +400,6 @@ impl MouseEvent {
         }
     }
 
-    /// Press `button` at `position`.
     #[must_use]
     pub const fn button_down(position: Point, button: MouseButton) -> Self {
         let kind = match button {
@@ -330,10 +407,13 @@ impl MouseEvent {
             MouseButton::Right => ffi::kCGEventRightMouseDown,
             _ => ffi::kCGEventOtherMouseDown,
         };
-        Self { kind, position, button }
+        Self {
+            kind,
+            position,
+            button,
+        }
     }
 
-    /// Release `button` at `position`.
     #[must_use]
     pub const fn button_up(position: Point, button: MouseButton) -> Self {
         let kind = match button {
@@ -341,7 +421,11 @@ impl MouseEvent {
             MouseButton::Right => ffi::kCGEventRightMouseUp,
             _ => ffi::kCGEventOtherMouseUp,
         };
-        Self { kind, position, button }
+        Self {
+            kind,
+            position,
+            button,
+        }
     }
 
     /// Build the underlying [`Event`] without posting.
@@ -377,7 +461,6 @@ impl MouseEvent {
     }
 
     /// Build + post the mouse event to a specific process by PID.
-    /// (Equivalent to `CGEventPostToPid`.)
     ///
     /// # Errors
     ///
@@ -390,31 +473,64 @@ impl MouseEvent {
     }
 }
 
-// ---- Scroll ----
-
 /// Build + post a scroll-wheel event.
 #[derive(Debug, Clone)]
 pub struct ScrollEvent {
     units: ffi::CGScrollEventUnit,
-    delta_y: i32,
+    axis1: i32,
+    axis2: i32,
+    axis3: i32,
 }
 
 impl ScrollEvent {
-    /// Scroll by `delta_y` lines (positive = up).
     #[must_use]
     pub const fn lines(delta_y: i32) -> Self {
+        Self::lines_3d(delta_y, 0, 0)
+    }
+
+    #[must_use]
+    pub const fn lines_2d(delta_y: i32, delta_x: i32) -> Self {
+        Self::lines_3d(delta_y, delta_x, 0)
+    }
+
+    #[must_use]
+    pub const fn lines_3d(delta_axis1: i32, delta_axis2: i32, delta_axis3: i32) -> Self {
         Self {
             units: ffi::kCGScrollEventUnitLine,
-            delta_y,
+            axis1: delta_axis1,
+            axis2: delta_axis2,
+            axis3: delta_axis3,
         }
     }
 
-    /// Scroll by `delta_y` pixels (positive = up).
     #[must_use]
     pub const fn pixels(delta_y: i32) -> Self {
+        Self::pixels_3d(delta_y, 0, 0)
+    }
+
+    #[must_use]
+    pub const fn pixels_2d(delta_y: i32, delta_x: i32) -> Self {
+        Self::pixels_3d(delta_y, delta_x, 0)
+    }
+
+    #[must_use]
+    pub const fn pixels_3d(delta_axis1: i32, delta_axis2: i32, delta_axis3: i32) -> Self {
         Self {
             units: ffi::kCGScrollEventUnitPixel,
-            delta_y,
+            axis1: delta_axis1,
+            axis2: delta_axis2,
+            axis3: delta_axis3,
+        }
+    }
+
+    #[must_use]
+    const fn wheel_count(&self) -> u32 {
+        if self.axis3 != 0 {
+            3
+        } else if self.axis2 != 0 {
+            2
+        } else {
+            1
         }
     }
 
@@ -424,11 +540,24 @@ impl ScrollEvent {
     ///
     /// See [`KeyEvent::build`].
     pub fn build(&self, source: &EventSource) -> Result<Event, CGError> {
-        let ptr = unsafe {
-            ffi::CGEventCreateScrollWheelEvent(source.ptr, self.units, 1, self.delta_y)
+        let ptr = if self.axis2 == 0 && self.axis3 == 0 {
+            unsafe { ffi::CGEventCreateScrollWheelEvent(source.ptr, self.units, 1, self.axis1) }
+        } else {
+            unsafe {
+                ffi::CGEventCreateScrollWheelEvent2(
+                    source.ptr,
+                    self.units,
+                    self.wheel_count(),
+                    self.axis1,
+                    self.axis2,
+                    self.axis3,
+                )
+            }
         };
         if ptr.is_null() {
-            return Err(CGError::EventCreateFailed("CGEventCreateScrollWheelEvent".into()));
+            return Err(CGError::EventCreateFailed(
+                "CGEventCreateScrollWheelEvent".into(),
+            ));
         }
         Ok(Event { ptr })
     }
@@ -446,7 +575,6 @@ impl ScrollEvent {
     }
 
     /// Build + post the scroll event to a specific process by PID.
-    /// (Equivalent to `CGEventPostToPid`.)
     ///
     /// # Errors
     ///
@@ -459,13 +587,7 @@ impl ScrollEvent {
     }
 }
 
-// ---- Convenience: type a string ----
-
 /// Type the string `s` as a sequence of synthesized key-down + key-up events.
-///
-/// Each character carries its unicode payload directly, bypassing the
-/// keymap — so unicode characters with no direct keycode (e.g. `é`,
-/// `中`, emoji) work too.
 ///
 /// # Errors
 ///
@@ -481,8 +603,6 @@ pub fn type_string(s: &str, location: TapLocation) -> Result<(), CGError> {
     }
     Ok(())
 }
-
-// ---- Common keycodes (US QWERTY) ----
 
 /// US-QWERTY virtual keycode constants. Use with [`KeyEvent`].
 #[allow(non_snake_case, clippy::module_name_repetitions)]
@@ -536,4 +656,27 @@ pub mod Keycode {
     pub const ARROW_RIGHT: u16 = 0x7C;
     pub const ARROW_DOWN: u16 = 0x7D;
     pub const ARROW_UP: u16 = 0x7E;
+}
+
+fn make_cfdata(bytes: &[u8]) -> Result<ffi::CFDataRef, CGError> {
+    let length = ffi::CFIndex::try_from(bytes.len())
+        .map_err(|_| CGError::InvalidArgument("data length does not fit CFIndex".into()))?;
+    let data = unsafe { ffi::CFDataCreate(ffi::kCFAllocatorDefault, bytes.as_ptr(), length) };
+    if data.is_null() {
+        Err(CGError::EventCreateFailed("CFDataCreate".into()))
+    } else {
+        Ok(data)
+    }
+}
+
+fn cfdata_to_vec(data: ffi::CFDataRef) -> Vec<u8> {
+    let length = usize::try_from(unsafe { ffi::CFDataGetLength(data) }).unwrap_or(0);
+    if length == 0 {
+        return Vec::new();
+    }
+    let bytes = unsafe { ffi::CFDataGetBytePtr(data) };
+    if bytes.is_null() {
+        return Vec::new();
+    }
+    unsafe { core::slice::from_raw_parts(bytes, length) }.to_vec()
 }
