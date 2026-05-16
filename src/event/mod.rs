@@ -146,6 +146,43 @@ impl Event {
         u16::try_from(v).unwrap_or(0)
     }
 
+    /// Read an arbitrary integer field. See `CGEventTypes.h` for valid
+    /// `CGEventField` constants.
+    #[must_use]
+    pub fn integer_field(&self, field: ffi::CGEventField) -> i64 {
+        unsafe { ffi::CGEventGetIntegerValueField(self.ptr, field) }
+    }
+
+    /// Write an arbitrary integer field.
+    pub fn set_integer_field(&self, field: ffi::CGEventField, value: i64) {
+        unsafe { ffi::CGEventSetIntegerValueField(self.ptr, field, value) };
+    }
+
+    /// Read this event's timestamp (Mach absolute nanoseconds since boot).
+    #[must_use]
+    pub fn timestamp(&self) -> u64 {
+        unsafe { ffi::CGEventGetTimestamp(self.ptr) }
+    }
+
+    /// Decode the Unicode characters this event would type (mirror of
+    /// `set_unicode_string`). Returns an empty string if Apple's
+    /// buffer is empty.
+    #[must_use]
+    pub fn unicode_string(&self) -> String {
+        const MAX: usize = 32;
+        let mut buf = [0u16; MAX];
+        let mut actual: usize = 0;
+        unsafe {
+            ffi::CGEventKeyboardGetUnicodeString(
+                self.ptr,
+                MAX,
+                &mut actual,
+                buf.as_mut_ptr(),
+            );
+        }
+        String::from_utf16_lossy(&buf[..actual.min(MAX)])
+    }
+
     /// Post the event to the requested tap location.
     pub fn post(&self, location: TapLocation) {
         unsafe { ffi::CGEventPost(location.as_raw(), self.ptr) };
