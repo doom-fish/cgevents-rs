@@ -12,6 +12,8 @@ use crate::cg_event_tap_options::CGEventTapOptions;
 use crate::cg_event_tap_proxy::CGEventTapProxy;
 use crate::cg_event_timestamp::CGEventTimestamp;
 use crate::cg_event_type::CGEventType;
+use crate::cg_momentum_scroll_phase::CGMomentumScrollPhase;
+use crate::cg_scroll_phase::CGScrollPhase;
 use crate::error::CGError;
 use crate::event::{Event, Point};
 use crate::ffi;
@@ -88,7 +90,10 @@ impl TappedEvent<'_> {
     #[must_use]
     pub fn keycode(&self) -> u16 {
         let raw = unsafe {
-            ffi::cg_event::cgevent_get_integer_value_field(self.ptr, CGEventField::KeyboardEventKeycode.raw())
+            ffi::cg_event::cgevent_get_integer_value_field(
+                self.ptr,
+                CGEventField::KeyboardEventKeycode.raw(),
+            )
         };
         u16::try_from(raw).unwrap_or(0)
     }
@@ -149,7 +154,11 @@ impl TappedEvent<'_> {
     pub fn set_unicode_string(&self, string: &str) {
         let utf16: Vec<u16> = string.encode_utf16().collect();
         unsafe {
-            ffi::cg_event::cgevent_keyboard_set_unicode_string(self.ptr, utf16.as_ptr(), utf16.len());
+            ffi::cg_event::cgevent_keyboard_set_unicode_string(
+                self.ptr,
+                utf16.as_ptr(),
+                utf16.len(),
+            );
         };
     }
 
@@ -163,6 +172,34 @@ impl TappedEvent<'_> {
 
     pub fn set_mouse_subtype(&self, subtype: CGEventMouseSubtype) {
         self.set_integer_value(CGEventField::MouseEventSubtype, i64::from(subtype.raw()));
+    }
+
+    #[must_use]
+    pub fn scroll_phase(&self) -> Option<CGScrollPhase> {
+        let raw = self.integer_value(CGEventField::ScrollWheelEventScrollPhase);
+        u32::try_from(raw).ok().and_then(CGScrollPhase::from_raw)
+    }
+
+    pub fn set_scroll_phase(&self, phase: CGScrollPhase) {
+        self.set_integer_value(
+            CGEventField::ScrollWheelEventScrollPhase,
+            i64::from(phase.raw()),
+        );
+    }
+
+    #[must_use]
+    pub fn momentum_scroll_phase(&self) -> Option<CGMomentumScrollPhase> {
+        let raw = self.integer_value(CGEventField::ScrollWheelEventMomentumPhase);
+        u32::try_from(raw)
+            .ok()
+            .and_then(CGMomentumScrollPhase::from_raw)
+    }
+
+    pub fn set_momentum_scroll_phase(&self, phase: CGMomentumScrollPhase) {
+        self.set_integer_value(
+            CGEventField::ScrollWheelEventMomentumPhase,
+            i64::from(phase.raw()),
+        );
     }
 
     #[must_use]
@@ -435,7 +472,9 @@ impl EventTap {
     /// Returns [`CGError::CoreGraphicsError`] if `CGGetEventTapList` returns a non-zero `CGError`.
     pub fn installed() -> Result<Vec<EventTapInformation>, CGError> {
         let mut count = 0_u32;
-        let code = unsafe { ffi::cg_event_tap::cgevent_get_event_tap_list(0, ptr::null_mut(), &mut count) };
+        let code = unsafe {
+            ffi::cg_event_tap::cgevent_get_event_tap_list(0, ptr::null_mut(), &mut count)
+        };
         if code != 0 {
             return Err(CGError::CoreGraphicsError {
                 operation: "CGGetEventTapList",
@@ -447,7 +486,11 @@ impl EventTap {
         }
         let mut raw = vec![ffi::CGEventTapInformation::default(); count as usize];
         let code = unsafe {
-            ffi::cg_event_tap::cgevent_get_event_tap_list(count, raw.as_mut_ptr().cast(), &mut count)
+            ffi::cg_event_tap::cgevent_get_event_tap_list(
+                count,
+                raw.as_mut_ptr().cast(),
+                &mut count,
+            )
         };
         if code != 0 {
             return Err(CGError::CoreGraphicsError {

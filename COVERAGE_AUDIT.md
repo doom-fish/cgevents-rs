@@ -1,10 +1,10 @@
 # cgevents coverage audit (vs MacOSX26.2.sdk)
 
 SDK_PUBLIC_SYMBOLS: 210
-VERIFIED: 191
-GAPS: 18
+VERIFIED: 209
+GAPS: 0
 EXEMPT: 1
-COVERAGE_PCT: 91.39%
+COVERAGE_PCT: 100.00%
 
 Audit note: VERIFIED counts symbols reachable through either the default safe API or the public `raw-ffi` feature.
 
@@ -85,8 +85,11 @@ Audit note: VERIFIED counts symbols reachable through either the default safe AP
 | CGEventTapProxy | type | CGEventTypes.h | `raw_ffi::CGEventTapProxy`, `cgevents::CGEventTapProxy` |
 | CGEventTimestamp | type | CGEventTypes.h | `raw_ffi::CGEventTimestamp`, `cgevents::CGEventTimestamp` |
 | CGEventType | enum | CGEventTypes.h | `raw_ffi::CGEventType`, `cgevents::CGEventType` |
+| CGGesturePhase | enum | CGEventTypes.h | `raw_ffi::CGGesturePhase`, `cgevents::CGGesturePhase` |
+| CGMomentumScrollPhase | enum | CGEventTypes.h | `raw_ffi::CGMomentumScrollPhase`, `cgevents::CGMomentumScrollPhase` |
 | CGMouseButton | enum | CGEventTypes.h | `raw_ffi::CGMouseButton`, `MouseButton` |
 | CGScrollEventUnit | enum | CGEventTypes.h | `raw_ffi::CGScrollEventUnit`, `ScrollEvent` builders |
+| CGScrollPhase | enum | CGEventTypes.h | `raw_ffi::CGScrollPhase`, `cgevents::CGScrollPhase` |
 | kCGAnnotatedSessionEventTap | constant | CGEventTypes.h | `raw_ffi::kCGAnnotatedSessionEventTap` |
 | kCGAnyInputEventType | constant | CGEventTypes.h | `raw_ffi::kCGAnyInputEventType`, `CG_ANY_INPUT_EVENT_TYPE` |
 | kCGEventFlagMaskAlphaShift | constant | CGEventTypes.h | `raw_ffi::kCGEventFlagMaskAlphaShift` |
@@ -131,6 +134,12 @@ Audit note: VERIFIED counts symbols reachable through either the default safe AP
 | kCGEventTapDisabledByUserInput | constant | CGEventTypes.h | `raw_ffi::kCGEventTapDisabledByUserInput` |
 | kCGEventTapOptionDefault | constant | CGEventTypes.h | `raw_ffi::kCGEventTapOptionDefault` |
 | kCGEventTapOptionListenOnly | constant | CGEventTypes.h | `raw_ffi::kCGEventTapOptionListenOnly` |
+| kCGGesturePhaseBegan | constant | CGEventTypes.h | `raw_ffi::kCGGesturePhaseBegan`, `CGGesturePhase::Began` |
+| kCGGesturePhaseCancelled | constant | CGEventTypes.h | `raw_ffi::kCGGesturePhaseCancelled`, `CGGesturePhase::Cancelled` |
+| kCGGesturePhaseChanged | constant | CGEventTypes.h | `raw_ffi::kCGGesturePhaseChanged`, `CGGesturePhase::Changed` |
+| kCGGesturePhaseEnded | constant | CGEventTypes.h | `raw_ffi::kCGGesturePhaseEnded`, `CGGesturePhase::Ended` |
+| kCGGesturePhaseMayBegin | constant | CGEventTypes.h | `raw_ffi::kCGGesturePhaseMayBegin`, `CGGesturePhase::MayBegin` |
+| kCGGesturePhaseNone | constant | CGEventTypes.h | `raw_ffi::kCGGesturePhaseNone`, `CGGesturePhase::None` |
 | kCGEventTargetProcessSerialNumber | constant | CGEventTypes.h | `raw_ffi::kCGEventTargetProcessSerialNumber` |
 | kCGEventTargetUnixProcessID | constant | CGEventTypes.h | `raw_ffi::kCGEventTargetUnixProcessID` |
 | kCGEventUnacceleratedPointerMovementX | constant | CGEventTypes.h | `raw_ffi::kCGEventUnacceleratedPointerMovementX` |
@@ -153,10 +162,19 @@ Audit note: VERIFIED counts symbols reachable through either the default safe AP
 | kCGMouseEventSubtype | constant | CGEventTypes.h | `raw_ffi::kCGMouseEventSubtype` |
 | kCGMouseEventWindowUnderMousePointer | constant | CGEventTypes.h | `raw_ffi::kCGMouseEventWindowUnderMousePointer` |
 | kCGMouseEventWindowUnderMousePointerThatCanHandleThisEvent | constant | CGEventTypes.h | `raw_ffi::kCGMouseEventWindowUnderMousePointerThatCanHandleThisEvent` |
+| kCGMomentumScrollPhaseBegin | constant | CGEventTypes.h | `raw_ffi::kCGMomentumScrollPhaseBegin`, `CGMomentumScrollPhase::Begin` |
+| kCGMomentumScrollPhaseContinue | constant | CGEventTypes.h | `raw_ffi::kCGMomentumScrollPhaseContinue`, `CGMomentumScrollPhase::Continue` |
+| kCGMomentumScrollPhaseEnd | constant | CGEventTypes.h | `raw_ffi::kCGMomentumScrollPhaseEnd`, `CGMomentumScrollPhase::End` |
+| kCGMomentumScrollPhaseNone | constant | CGEventTypes.h | `raw_ffi::kCGMomentumScrollPhaseNone`, `CGMomentumScrollPhase::None` |
 | kCGNotifyEventTapAdded | constant | CGEventTypes.h | `raw_ffi::kCGNotifyEventTapAdded`, `EVENT_TAP_ADDED_NOTIFICATION` |
 | kCGNotifyEventTapRemoved | constant | CGEventTypes.h | `raw_ffi::kCGNotifyEventTapRemoved`, `EVENT_TAP_REMOVED_NOTIFICATION` |
 | kCGScrollEventUnitLine | constant | CGEventTypes.h | `raw_ffi::kCGScrollEventUnitLine` |
 | kCGScrollEventUnitPixel | constant | CGEventTypes.h | `raw_ffi::kCGScrollEventUnitPixel` |
+| kCGScrollPhaseBegan | constant | CGEventTypes.h | `raw_ffi::kCGScrollPhaseBegan`, `CGScrollPhase::Began` |
+| kCGScrollPhaseCancelled | constant | CGEventTypes.h | `raw_ffi::kCGScrollPhaseCancelled`, `CGScrollPhase::Cancelled` |
+| kCGScrollPhaseChanged | constant | CGEventTypes.h | `raw_ffi::kCGScrollPhaseChanged`, `CGScrollPhase::Changed` |
+| kCGScrollPhaseEnded | constant | CGEventTypes.h | `raw_ffi::kCGScrollPhaseEnded`, `CGScrollPhase::Ended` |
+| kCGScrollPhaseMayBegin | constant | CGEventTypes.h | `raw_ffi::kCGScrollPhaseMayBegin`, `CGScrollPhase::MayBegin` |
 | kCGScrollWheelEventAcceleratedDeltaAxis1 | constant | CGEventTypes.h | `raw_ffi::kCGScrollWheelEventAcceleratedDeltaAxis1` |
 | kCGScrollWheelEventAcceleratedDeltaAxis2 | constant | CGEventTypes.h | `raw_ffi::kCGScrollWheelEventAcceleratedDeltaAxis2` |
 | kCGScrollWheelEventDeltaAxis1 | constant | CGEventTypes.h | `raw_ffi::kCGScrollWheelEventDeltaAxis1` |
@@ -204,26 +222,7 @@ Audit note: VERIFIED counts symbols reachable through either the default safe AP
 | kCGTailAppendEventTap | constant | CGEventTypes.h | `raw_ffi::kCGTailAppendEventTap` |
 
 ## 🔴 GAPS
-| Symbol | Kind | Header | Notes |
-| --- | --- | --- | --- |
-| CGGesturePhase | enum | CGEventTypes.h | Missing named gesture-phase representation; the crate exposes no raw or safe `CGGesturePhase` constants. |
-| CGMomentumScrollPhase | enum | CGEventTypes.h | Missing named momentum-phase representation; callers must interpret `CGEventField::ScrollWheelEventMomentumPhase` numerically. |
-| CGScrollPhase | enum | CGEventTypes.h | Missing named scroll-phase representation; callers must interpret `CGEventField::ScrollWheelEventScrollPhase` numerically. |
-| kCGGesturePhaseBegan | constant | CGEventTypes.h | Missing named gesture-phase representation; the crate exposes no raw or safe `CGGesturePhase` constants. |
-| kCGGesturePhaseCancelled | constant | CGEventTypes.h | Missing named gesture-phase representation; the crate exposes no raw or safe `CGGesturePhase` constants. |
-| kCGGesturePhaseChanged | constant | CGEventTypes.h | Missing named gesture-phase representation; the crate exposes no raw or safe `CGGesturePhase` constants. |
-| kCGGesturePhaseEnded | constant | CGEventTypes.h | Missing named gesture-phase representation; the crate exposes no raw or safe `CGGesturePhase` constants. |
-| kCGGesturePhaseMayBegin | constant | CGEventTypes.h | Missing named gesture-phase representation; the crate exposes no raw or safe `CGGesturePhase` constants. |
-| kCGGesturePhaseNone | constant | CGEventTypes.h | Missing named gesture-phase representation; the crate exposes no raw or safe `CGGesturePhase` constants. |
-| kCGMomentumScrollPhaseBegin | constant | CGEventTypes.h | Missing named momentum-phase representation; callers must interpret `CGEventField::ScrollWheelEventMomentumPhase` numerically. |
-| kCGMomentumScrollPhaseContinue | constant | CGEventTypes.h | Missing named momentum-phase representation; callers must interpret `CGEventField::ScrollWheelEventMomentumPhase` numerically. |
-| kCGMomentumScrollPhaseEnd | constant | CGEventTypes.h | Missing named momentum-phase representation; callers must interpret `CGEventField::ScrollWheelEventMomentumPhase` numerically. |
-| kCGMomentumScrollPhaseNone | constant | CGEventTypes.h | Missing named momentum-phase representation; callers must interpret `CGEventField::ScrollWheelEventMomentumPhase` numerically. |
-| kCGScrollPhaseBegan | constant | CGEventTypes.h | Missing named scroll-phase representation; callers must interpret `CGEventField::ScrollWheelEventScrollPhase` numerically. |
-| kCGScrollPhaseCancelled | constant | CGEventTypes.h | Missing named scroll-phase representation; callers must interpret `CGEventField::ScrollWheelEventScrollPhase` numerically. |
-| kCGScrollPhaseChanged | constant | CGEventTypes.h | Missing named scroll-phase representation; callers must interpret `CGEventField::ScrollWheelEventScrollPhase` numerically. |
-| kCGScrollPhaseEnded | constant | CGEventTypes.h | Missing named scroll-phase representation; callers must interpret `CGEventField::ScrollWheelEventScrollPhase` numerically. |
-| kCGScrollPhaseMayBegin | constant | CGEventTypes.h | Missing named scroll-phase representation; callers must interpret `CGEventField::ScrollWheelEventScrollPhase` numerically. |
+None.
 
 ## ⏭️ EXEMPT
 | Symbol | Kind | Header | Reason | SDK attribute |
@@ -232,6 +231,6 @@ Audit note: VERIFIED counts symbols reachable through either the default safe AP
 
 ## Notes
 
-- The only uncovered named symbols are the three phase enums introduced in `CGEventTypes.h` (`CGMomentumScrollPhase`, `CGScrollPhase`, `CGGesturePhase`) and their constants.
-- `cgevents` can still read/write the underlying scroll-phase and momentum-phase fields numerically via `CGEventField`, but it does not currently export the named phase enums/constants.
+- All public macOS Quartz Event Services symbols from `CGEvent.h`, `CGEventSource.h`, and `CGEventTypes.h` are now covered except the deprecated `CGEventPostToPSN` entry kept in ⏭️ EXEMPT.
+- `cgevents` now exports `CGGesturePhase`, `CGMomentumScrollPhase`, and `CGScrollPhase`, with `Event` / `TappedEvent` helpers for the scroll and momentum phase fields.
 - `CGEventPostToPSN` is intentionally scored as exempt because the header marks it deprecated; the raw FFI still exposes it for completeness.

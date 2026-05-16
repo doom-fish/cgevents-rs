@@ -47,3 +47,6 @@ pub mod cg_event_tap_options;
 pub mod cg_event_tap_proxy;
 pub mod cg_event_timestamp;
 pub mod cg_event_type;
+pub mod cg_gesture_phase;
+pub mod cg_momentum_scroll_phase;
+pub mod cg_scroll_phase;

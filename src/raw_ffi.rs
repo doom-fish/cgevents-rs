@@ -39,6 +39,9 @@ pub type CGEventSourceStateID = i32;
 pub type CGEventSourceKeyboardType = u32;
 pub type CGMouseButton = u32;
 pub type CGScrollEventUnit = u32;
+pub type CGGesturePhase = u32;
+pub type CGMomentumScrollPhase = u32;
+pub type CGScrollPhase = u32;
 pub type CGEventFlags = u64;
 pub type CGEventFilterMask = u32;
 pub type CGEventSuppressionState = u32;
@@ -96,6 +99,24 @@ pub const kCGMouseButtonCenter: CGMouseButton = 2;
 
 pub const kCGScrollEventUnitPixel: CGScrollEventUnit = 0;
 pub const kCGScrollEventUnitLine: CGScrollEventUnit = 1;
+
+pub const kCGMomentumScrollPhaseNone: CGMomentumScrollPhase = 0;
+pub const kCGMomentumScrollPhaseBegin: CGMomentumScrollPhase = 1;
+pub const kCGMomentumScrollPhaseContinue: CGMomentumScrollPhase = 2;
+pub const kCGMomentumScrollPhaseEnd: CGMomentumScrollPhase = 3;
+
+pub const kCGScrollPhaseBegan: CGScrollPhase = 1;
+pub const kCGScrollPhaseChanged: CGScrollPhase = 2;
+pub const kCGScrollPhaseEnded: CGScrollPhase = 4;
+pub const kCGScrollPhaseCancelled: CGScrollPhase = 8;
+pub const kCGScrollPhaseMayBegin: CGScrollPhase = 128;
+
+pub const kCGGesturePhaseNone: CGGesturePhase = 0;
+pub const kCGGesturePhaseBegan: CGGesturePhase = 1;
+pub const kCGGesturePhaseChanged: CGGesturePhase = 2;
+pub const kCGGesturePhaseEnded: CGGesturePhase = 4;
+pub const kCGGesturePhaseCancelled: CGGesturePhase = 8;
+pub const kCGGesturePhaseMayBegin: CGGesturePhase = 128;
 
 pub const kCGEventFlagMaskAlphaShift: CGEventFlags = 0x0001_0000;
 pub const kCGEventFlagMaskShift: CGEventFlags = 0x0002_0000;
@@ -330,7 +351,10 @@ unsafe extern "C" {
     pub fn CGEventSourceGetTypeID() -> CFTypeID;
     pub fn CGEventSourceCreate(state_id: CGEventSourceStateID) -> CGEventSourceRef;
     pub fn CGEventSourceGetKeyboardType(source: CGEventSourceRef) -> CGEventSourceKeyboardType;
-    pub fn CGEventSourceSetKeyboardType(source: CGEventSourceRef, keyboard_type: CGEventSourceKeyboardType);
+    pub fn CGEventSourceSetKeyboardType(
+        source: CGEventSourceRef,
+        keyboard_type: CGEventSourceKeyboardType,
+    );
     pub fn CGEventSourceGetPixelsPerLine(source: CGEventSourceRef) -> f64;
     pub fn CGEventSourceSetPixelsPerLine(source: CGEventSourceRef, pixels_per_line: f64);
     pub fn CGEventSourceGetSourceStateID(source: CGEventSourceRef) -> CGEventSourceStateID;
@@ -362,5 +386,9 @@ unsafe extern "C" {
 
 #[must_use]
 pub const fn cg_event_mask_bit(ty: CGEventType) -> CGEventMask {
-    if ty < 64 { 1_u64 << ty } else { 0 }
+    if ty < 64 {
+        1_u64 << ty
+    } else {
+        0
+    }
 }

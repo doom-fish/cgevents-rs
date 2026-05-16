@@ -20,6 +20,9 @@ pub mod cg_event_tap_options;
 pub mod cg_event_tap_proxy;
 pub mod cg_event_timestamp;
 pub mod cg_event_type;
+pub mod cg_gesture_phase;
+pub mod cg_momentum_scroll_phase;
+pub mod cg_scroll_phase;
 pub mod error;
 pub mod event;
 pub mod ffi;
@@ -37,8 +40,13 @@ pub use cg_event_tap_options::CGEventTapOptions;
 pub use cg_event_tap_proxy::CGEventTapProxy;
 pub use cg_event_timestamp::CGEventTimestamp;
 pub use cg_event_type::{CGEventType, CG_ANY_INPUT_EVENT_TYPE, CG_EVENT_MASK_FOR_ALL_EVENTS};
+pub use cg_gesture_phase::CGGesturePhase;
+pub use cg_momentum_scroll_phase::CGMomentumScrollPhase;
+pub use cg_scroll_phase::CGScrollPhase;
 pub use error::CGError;
-pub use event::{type_string, Event, KeyEvent, Keycode, MouseButton, MouseEvent, Point, ScrollEvent};
+pub use event::{
+    type_string, Event, KeyEvent, Keycode, MouseButton, MouseEvent, Point, ScrollEvent,
+};
 pub use source::{EventSource, LocalEventsFilter, SourceState, SuppressionState};
 pub use tap::{
     EventTap, EventTapInformation, TapAction, TapPlacement, TappedEvent,
@@ -54,8 +62,13 @@ pub mod prelude {
     pub use crate::cg_event_tap_options::CGEventTapOptions;
     pub use crate::cg_event_timestamp::CGEventTimestamp;
     pub use crate::cg_event_type::{CGEventType, CG_EVENT_MASK_FOR_ALL_EVENTS};
+    pub use crate::cg_gesture_phase::CGGesturePhase;
+    pub use crate::cg_momentum_scroll_phase::CGMomentumScrollPhase;
+    pub use crate::cg_scroll_phase::CGScrollPhase;
     pub use crate::error::CGError;
-    pub use crate::event::{type_string, Event, KeyEvent, Keycode, MouseButton, MouseEvent, Point, ScrollEvent};
+    pub use crate::event::{
+        type_string, Event, KeyEvent, Keycode, MouseButton, MouseEvent, Point, ScrollEvent,
+    };
     pub use crate::source::{EventSource, LocalEventsFilter, SourceState, SuppressionState};
     pub use crate::tap::{EventTap, EventTapInformation, TapAction, TapPlacement, TappedEvent};
 }

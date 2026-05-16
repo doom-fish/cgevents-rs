@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.1] - 2026-05-16
+
+### Added
+
+- `CGGesturePhase`, `CGMomentumScrollPhase`, and `CGScrollPhase` safe enums plus `Event` / `TappedEvent` helpers for scroll-phase and momentum-phase fields.
+- Raw `raw-ffi` constants for every `CGGesturePhase`, `CGMomentumScrollPhase`, and `CGScrollPhase` symbol in `CGEventTypes.h`.
+- Swift bridge validation helpers and a smoke test covering the phase enums against the SDK overlay.
+
+### Changed
+
+- `COVERAGE.md` and `COVERAGE_AUDIT.md` now report full public macOS `CGEventTypes.h` coverage aside from the deprecated `CGEventPostToPSN` exemption.
+
 ## [0.5.0] - 2026-05-16
 
 ### Added

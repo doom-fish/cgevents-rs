@@ -1,7 +1,7 @@
 # Quartz Event Services coverage audit
 
 Crate: `cgevents`  
-Target release: `0.5.0`
+Target release: `0.5.1`
 
 Reference headers audited:
 
@@ -263,6 +263,14 @@ Legend:
 | --- | --- | --- |
 | `CGEventTimestamp` | ✅ implemented | `CGEventTimestamp(u64)` newtype. |
 | `CGEventGetTimestamp` / `CGEventSetTimestamp` | ✅ implemented | `Event` + `TappedEvent` timestamp helpers. |
+
+## Logical area coverage — phase enums
+
+| Symbol | Status | Rust surface |
+| --- | --- | --- |
+| `CGGesturePhase` | ✅ implemented | `CGGesturePhase` safe enum + `raw_ffi` constants. |
+| `CGMomentumScrollPhase` | ✅ implemented | `CGMomentumScrollPhase`, `Event::{momentum_scroll_phase,set_momentum_scroll_phase}`, `TappedEvent::{momentum_scroll_phase,set_momentum_scroll_phase}`. |
+| `CGScrollPhase` | ✅ implemented | `CGScrollPhase`, `Event::{scroll_phase,set_scroll_phase}`, `TappedEvent::{scroll_phase,set_scroll_phase}`. |
 
 ## Related event-system support types (implemented)
 

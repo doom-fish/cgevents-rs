@@ -8,6 +8,8 @@ use crate::cg_event_mouse_subtype::CGEventMouseSubtype;
 use crate::cg_event_tap_location::{CGEventTapLocation, TapLocation};
 use crate::cg_event_timestamp::CGEventTimestamp;
 use crate::cg_event_type::CGEventType;
+use crate::cg_momentum_scroll_phase::CGMomentumScrollPhase;
+use crate::cg_scroll_phase::CGScrollPhase;
 use crate::error::CGError;
 use crate::ffi;
 use crate::source::EventSource;
@@ -116,7 +118,8 @@ impl Event {
             ));
         }
         let mut bytes = vec![0_u8; len];
-        let ok = unsafe { ffi::cg_event::cgevent_create_data_copy(self.ptr, bytes.as_mut_ptr(), len) };
+        let ok =
+            unsafe { ffi::cg_event::cgevent_create_data_copy(self.ptr, bytes.as_mut_ptr(), len) };
         if ok {
             Ok(bytes)
         } else {
@@ -245,7 +248,11 @@ impl Event {
     pub fn set_unicode_string(&self, s: &str) {
         let utf16: Vec<u16> = s.encode_utf16().collect();
         unsafe {
-            ffi::cg_event::cgevent_keyboard_set_unicode_string(self.ptr, utf16.as_ptr(), utf16.len());
+            ffi::cg_event::cgevent_keyboard_set_unicode_string(
+                self.ptr,
+                utf16.as_ptr(),
+                utf16.len(),
+            );
         };
     }
 
@@ -301,6 +308,34 @@ impl Event {
 
     pub fn set_mouse_subtype(&self, subtype: CGEventMouseSubtype) {
         self.set_integer_value(CGEventField::MouseEventSubtype, i64::from(subtype.raw()));
+    }
+
+    #[must_use]
+    pub fn scroll_phase(&self) -> Option<CGScrollPhase> {
+        let raw = self.integer_value(CGEventField::ScrollWheelEventScrollPhase);
+        u32::try_from(raw).ok().and_then(CGScrollPhase::from_raw)
+    }
+
+    pub fn set_scroll_phase(&self, phase: CGScrollPhase) {
+        self.set_integer_value(
+            CGEventField::ScrollWheelEventScrollPhase,
+            i64::from(phase.raw()),
+        );
+    }
+
+    #[must_use]
+    pub fn momentum_scroll_phase(&self) -> Option<CGMomentumScrollPhase> {
+        let raw = self.integer_value(CGEventField::ScrollWheelEventMomentumPhase);
+        u32::try_from(raw)
+            .ok()
+            .and_then(CGMomentumScrollPhase::from_raw)
+    }
+
+    pub fn set_momentum_scroll_phase(&self, phase: CGMomentumScrollPhase) {
+        self.set_integer_value(
+            CGEventField::ScrollWheelEventMomentumPhase,
+            i64::from(phase.raw()),
+        );
     }
 
     #[must_use]
