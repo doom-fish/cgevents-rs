@@ -1,10 +1,15 @@
 # cgevents
 
-Safe Rust bindings for Apple's [Quartz Event Services](https://developer.apple.com/documentation/coregraphics/quartz_event_services) on macOS — synthesise + intercept keyboard, mouse, and scroll-wheel events globally.
+Safe Rust bindings for Apple's [Quartz Event Services](https://developer.apple.com/documentation/coregraphics/quartz_event_services) on macOS — synthesise, inspect, and intercept keyboard, mouse, tablet, and scroll-wheel events globally.
 
-> **Status:** actively developed. v0.4 ships keyboard / mouse / scroll synthesis, unicode `type_string`, event tap interception, event/source inspection helpers, multi-axis scroll creation, and common US-QWERTY keycodes.
+> **Status:** v0.5 ships a Swift-first bridge for `CGEvent`, `CGEventSource`, `CGEventTap`, `CGEventField`, `CGEventType`, `CGEventFlags`, `CGEventMouseSubtype`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`. The legacy direct C surface remains available behind the `raw-ffi` feature.
 
-Pure C — **zero Swift bridge** (like `videotoolbox`, `imageio`).
+## Highlights
+
+- Swift bridge by default; raw C imports moved behind `raw-ffi`.
+- Typed Rust wrappers for `CGEventType`, `CGEventField`, `CGEventFlags`, `CGEventMouseSubtype`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`.
+- Safe wrappers for event creation, copying, serialisation, source extraction, tap creation, tap inventory, and Accessibility preflight/request helpers.
+- 11 runnable examples + 11 per-area smoke tests.
 
 ## Quick start — synthesise input
 
@@ -36,11 +41,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     source.set_user_data(42);
 
     let event = MouseEvent::move_to(Point::new(400.0, 300.0)).build(&source)?;
-    let bytes = event.data()?;
-    let copy = Event::from_data(&bytes)?.copy()?;
+    event.set_integer_value(CGEventField::MouseEventDeltaX, 12);
+    event.set_mouse_subtype(CGEventMouseSubtype::TabletPoint);
 
     println!("state_id={} flags={:?}", source.source_state_id(), source.flags_state());
-    println!("event at {:?} / {:?}", copy.location(), copy.unflipped_location());
+    println!("event_type={:?} location={:?}", event.event_type_typed(), event.location());
+    println!("mouse_subtype={:?}", event.mouse_subtype());
     Ok(())
 }
 ```
@@ -60,25 +66,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## `raw-ffi` feature
+
+Enable `raw-ffi` when you need the direct CoreGraphics C imports instead of the Swift-first safe surface:
+
+```toml
+[dependencies]
+cgevents = { version = "0.5", features = ["raw-ffi"] }
+```
+
+This exposes `cgevents::raw_ffi` with the legacy `extern "C"` declarations, constants, and structs.
+
 ## Permissions
 
-* **`CGEventPost`** — needs **no permission**.
-* **`CGEventTap`** (interception) — requires **Accessibility permission**.
+- `CGEventPost` synthesis does not require Accessibility permission.
+- `CGEventTap` interception usually requires Accessibility permission.
+- `EventTap::{preflight,request}_listen_access` and `EventTap::{preflight,request}_post_access` wrap the 10.15+ access helpers.
 
-## Roadmap
+## Notes
 
-- [x] `KeyEvent::{down, up}` with modifier flags
-- [x] `MouseEvent::{move_to, button_down, button_up}`
-- [x] `ScrollEvent::{lines, pixels}` plus multi-axis `*_2d` / `*_3d`
-- [x] `type_string` for unicode-payload input
-- [x] `EventTap::{new, keyboard, mouse}` with `Pass`/`Drop` actions
-- [x] `Event` helpers for copy, serialization, source extraction, and location/field access
-- [x] `EventSource` helpers for keyboard type, pixels-per-line, user data, source-state queries, and suppression tuning
-- [x] `CGEventPostToPid` ergonomics on `Event`, `KeyEvent`, `MouseEvent`, and `ScrollEvent`
-- [ ] Per-process event taps (`CGEventTapCreateForPid`) convenience wrappers
-- [ ] Tablet-pointer + tablet-proximity event builders
-- [ ] Full Apple keycode set (beyond the common US-QWERTY subset)
-- [ ] Permission-helper that opens System Settings to the Accessibility pane
+- `Event::data()` / `Event::from_data()` use the Swift overlay's event-data bridge. On macOS 12+ this is fully supported by the default Swift bridge. The direct C entry points remain available behind `raw-ffi` for lower-level callers.
+- Deprecated PSN tap/post APIs remain intentionally omitted from the safe surface; see `COVERAGE.md`.
 
 ## License
 

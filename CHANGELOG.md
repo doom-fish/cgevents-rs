@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0] - 2026-05-16
+
+### Added
+
+- Swift-first `CGEventsBridge` package plus Cargo build integration modelled on the ScreenCaptureKit bridge pattern.
+- Safe Rust coverage for `CGEvent`, `CGEventSource`, `CGEventTap`, `CGEventField`, `CGEventType`, `CGEventFlags`, `CGEventMouseSubtype`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`.
+- Per-area examples (`01`-`11`) and per-area smoke tests, including a permission-gated tap-proxy repost flow.
+- `EventTap::installed`, `EventTap::for_pid`, tap access preflight/request helpers, typed tap inventory, and `TapPlacement`.
+- `raw-ffi` feature exposing the legacy direct C imports separately from the default Swift bridge.
+- `COVERAGE.md` audit of `CGEvent.h`, `CGEventSource.h`, and `CGEventTypes.h` event-system coverage.
+
+### Changed
+
+- Default bindings now flow through Swift holder objects instead of linking raw C directly from the safe surface.
+- README now documents the typed enum/flag areas, the `raw-ffi` feature, and the tap access helpers.
+- Internal linking now pulls the Swift compatibility/runtime libraries required by non-Swift Rust binaries.
+
 ## [0.4.0] - 2026-05-16
 
 ### Added

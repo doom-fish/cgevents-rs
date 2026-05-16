@@ -1,11 +1,11 @@
 [package]
 name = "cgevents"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/doom-fish/cgevents-rs"
 repository = "https://github.com/doom-fish/cgevents-rs"
-description = "Safe Rust bindings for Apple's Quartz Event Services — synthesise, inspect, and intercept input on macOS"
+description = "Safe Rust bindings for Apple's Quartz Event Services via a Swift bridge on macOS"
 authors = ["Per Johansson <per@doom.fish>"]
 keywords = ["input", "keyboard", "mouse", "macos", "automation"]
 categories = ["api-bindings", "os::macos-apis"]
@@ -14,6 +14,7 @@ readme = "README.md"
 build = "build.rs"
 include = [
     "src/**/*",
+    "swift-bridge/**/*",
     "examples/**/*",
     "tests/**/*",
     "build.rs",
@@ -21,7 +22,12 @@ include = [
     "README.md",
     "LICENSE-*",
     "CHANGELOG.md",
+    "COVERAGE.md",
 ]
+
+[features]
+default = []
+raw-ffi = []
 
 [lints.rust]
 
@@ -49,20 +55,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 [badges]
 maintenance = { status = "actively-developed" }
 
-[[example]]
-name = "01_synth_click"
-
-[[example]]
-name = "02_type_string"
-
-[[example]]
-name = "03_keyboard_tap"
-
-[[example]]
-name = "04_event_roundtrip"
-
-[[example]]
-name = "05_source_state"
+[[test]]
+name = "api_coverage"
+required-features = ["raw-ffi"]
 
 [profile.release]
 debug = "full"
