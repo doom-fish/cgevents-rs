@@ -250,9 +250,21 @@ impl KeyEvent {
         ev.post(location);
         Ok(())
     }
-}
 
-// ---- Mouse ----
+    /// Build + post the event to a specific process by PID. Lets you
+    /// target a specific application instead of broadcasting to the
+    /// whole session. (Equivalent to `CGEventPostToPid`.)
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::build`].
+    pub fn post_to_pid(&self, pid: i32) -> Result<(), CGError> {
+        let src = EventSource::private()?;
+        let ev = self.build(&src)?;
+        ev.post_to_pid(pid);
+        Ok(())
+    }
+}
 
 /// Build + post a mouse event.
 #[derive(Debug, Clone)]
@@ -326,6 +338,19 @@ impl MouseEvent {
         ev.post(location);
         Ok(())
     }
+
+    /// Build + post the mouse event to a specific process by PID.
+    /// (Equivalent to `CGEventPostToPid`.)
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::build`].
+    pub fn post_to_pid(&self, pid: i32) -> Result<(), CGError> {
+        let src = EventSource::private()?;
+        let ev = self.build(&src)?;
+        ev.post_to_pid(pid);
+        Ok(())
+    }
 }
 
 // ---- Scroll ----
@@ -380,6 +405,19 @@ impl ScrollEvent {
         let src = EventSource::private()?;
         let ev = self.build(&src)?;
         ev.post(location);
+        Ok(())
+    }
+
+    /// Build + post the scroll event to a specific process by PID.
+    /// (Equivalent to `CGEventPostToPid`.)
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::build`].
+    pub fn post_to_pid(&self, pid: i32) -> Result<(), CGError> {
+        let src = EventSource::private()?;
+        let ev = self.build(&src)?;
+        ev.post_to_pid(pid);
         Ok(())
     }
 }
