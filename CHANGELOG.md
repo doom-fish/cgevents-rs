@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0] - 2026-05-17
+
+### Added
+
+- **`async` feature** — `src/async_api.rs` module gated behind `features = ["async"]`.
+- **`CGEventTapStream`** — executor-agnostic, lossy-by-default async stream wrapping `CGEventTapCreate`. Installs a listen-only tap on a dedicated run-loop thread; the Rust `Drop` impl disables the tap, stops the thread, and closes the stream.
+- **`CGEventItem`** — owned event snapshot (`event_type`, `location`, `flags`, `timestamp`, `keycode`) suitable for crossing thread boundaries.
+- Swift bridge addition: `AsyncStream.swift` with `CGEventsTapAsyncStreamBridge`, `cgevents_tap_stream_subscribe`, and `cgevents_tap_stream_unsubscribe`.
+- New dependency: `doom-fish-utils = { path = "../doom-fish-utils", version = "0.1" }`.
+- New dev-dependency: `pollster = "0.3"` (for examples).
+- Example `12_async_tap_stream` — async keyboard tap with 2-second graceful timeout.
+- Test suite `async_stream_tests` — 6 tests covering send/sync, subscribe/drop, try_next, capacity, and permission-failure paths.
+
 ## [0.5.1] - 2026-05-16
 
 ### Added

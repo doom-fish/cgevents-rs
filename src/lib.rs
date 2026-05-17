@@ -32,6 +32,10 @@ pub mod raw_ffi;
 pub mod source;
 pub mod tap;
 
+#[cfg(feature = "async")]
+#[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+pub mod async_api;
+
 pub use cg_event_field::CGEventField;
 pub use cg_event_flags::{CGEventFlags, ModifierFlags, CG_EVENT_FLAGS_KNOWN_MASK};
 pub use cg_event_mouse_subtype::CGEventMouseSubtype;

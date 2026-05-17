@@ -2,14 +2,40 @@
 
 Safe Rust bindings for Apple's [Quartz Event Services](https://developer.apple.com/documentation/coregraphics/quartz_event_services) on macOS — synthesise, inspect, and intercept keyboard, mouse, tablet, and scroll-wheel events globally.
 
-> **Status:** v0.5.1 ships a Swift-first bridge for `CGEvent`, `CGEventSource`, `CGEventTap`, `CGEventField`, `CGEventType`, `CGEventFlags`, `CGEventMouseSubtype`, `CGGesturePhase`, `CGMomentumScrollPhase`, `CGScrollPhase`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`. The legacy direct C surface remains available behind the `raw-ffi` feature.
+> **Status:** v0.6.0 adds a Tier-2 async Stream module (`async` feature) with `CGEventTapStream` — an executor-agnostic, lossy async stream over `CGEventTapCreate`. v0.5.1 ships a Swift-first bridge for `CGEvent`, `CGEventSource`, `CGEventTap`, `CGEventField`, `CGEventType`, `CGEventFlags`, `CGEventMouseSubtype`, `CGGesturePhase`, `CGMomentumScrollPhase`, `CGScrollPhase`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`. The legacy direct C surface remains available behind the `raw-ffi` feature.
 
 ## Highlights
 
 - Swift bridge by default; raw C imports moved behind `raw-ffi`.
 - Typed Rust wrappers for `CGEventType`, `CGEventField`, `CGEventFlags`, `CGEventMouseSubtype`, `CGGesturePhase`, `CGMomentumScrollPhase`, `CGScrollPhase`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`.
 - Safe wrappers for event creation, copying, serialisation, source extraction, typed scroll/momentum phase inspection, tap creation, tap inventory, and Accessibility preflight/request helpers.
-- 11 runnable examples + 12 per-area smoke tests.
+- **`async` feature** — `CGEventTapStream` wraps `CGEventTapCreate` as a `BoundedAsyncStream<CGEventItem>` with a dedicated run-loop thread and RAII unsubscribe.
+- 12 runnable examples + 13 per-area test suites.
+
+## Quick start — async event stream
+
+```rust,no_run
+use cgevents::async_api::CGEventTapStream;
+use cgevents::{TapLocation, CG_EVENT_MASK_FOR_ALL_EVENTS};
+
+# async fn run() -> Result<(), cgevents::CGError> {
+let stream = CGEventTapStream::subscribe(
+    TapLocation::Session,
+    CG_EVENT_MASK_FOR_ALL_EVENTS,
+    64,
+)?;
+while let Some(ev) = stream.next().await {
+    println!("{:?}  @ ({:.0}, {:.0})", ev.event_type, ev.location.x, ev.location.y);
+}
+# Ok(())
+# }
+```
+
+Add to `Cargo.toml`:
+
+```toml
+cgevents = { version = "0.6", features = ["async"] }
+```
 
 ## Quick start — synthesise input
 

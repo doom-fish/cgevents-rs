@@ -1,6 +1,6 @@
 [package]
 name = "cgevents"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/doom-fish/cgevents-rs"
@@ -14,7 +14,8 @@ readme = "README.md"
 build = "build.rs"
 include = [
     "src/**/*",
-    "swift-bridge/**/*",
+    "swift-bridge/Package.swift",
+    "swift-bridge/Sources/**/*",
     "examples/**/*",
     "tests/**/*",
     "build.rs",
@@ -28,6 +29,7 @@ include = [
 [features]
 default = []
 raw-ffi = []
+async = []
 
 [lints.rust]
 
@@ -42,9 +44,11 @@ crate-type = ["lib"]
 
 [dependencies]
 bitflags = "2"
+doom-fish-utils = { path = "../doom-fish-utils", version = "0.1" }
 
 [dev-dependencies]
 regex-lite = "0.1"
+pollster = "0.3"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -58,6 +62,14 @@ maintenance = { status = "actively-developed" }
 [[test]]
 name = "api_coverage"
 required-features = ["raw-ffi"]
+
+[[test]]
+name = "async_stream_tests"
+required-features = ["async"]
+
+[[example]]
+name = "12_async_tap_stream"
+required-features = ["async"]
 
 [profile.release]
 debug = "full"
