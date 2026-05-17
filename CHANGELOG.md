@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.1] - 2026-05-17
+
+### Fixed
+
+- **Thread-exit race in `CGEventTapStream` drop** — `cgevents_tap_stream_unsubscribe`
+  now calls `stopAndJoin()` before releasing the Swift bridge object, guaranteeing
+  that the dedicated run-loop thread has fully exited before the Rust `Drop` impl
+  frees the `AsyncStreamSender` pointer.  Previously `CFRunLoopStop` was called
+  without waiting, leaving a window where an in-flight callback could observe a
+  freed pointer.
+- **Panic guard on `EventTap` trampoline** — the `extern "C"` trampoline that
+  invokes user `FnMut` callbacks now wraps the call in
+  `doom_fish_utils::panic_safe::catch_user_panic`, preventing a user panic from
+  unwinding across the FFI boundary (UB).
+- **SAFETY comment** added to the raw-pointer dereference inside `trampoline`.
+- **`doom-fish-utils` version range** tightened to `>=0.1, <0.3`.
+
 ## [0.6.0] - 2026-05-17
 
 ### Added

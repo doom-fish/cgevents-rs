@@ -18,14 +18,16 @@ public typealias CGEventsStreamCallback = @convention(c) (
 ///
 /// The tap is created on the dedicated thread's run loop so that the thread
 /// blocks in `CFRunLoopRun()` without interfering with the caller's run loop.
-/// On `deinit`, the tap is disabled/invalidated and the run loop is stopped,
-/// which causes the thread to exit.
+/// Call `stopAndJoin()` before releasing the bridge to guarantee the run-loop
+/// thread has fully exited and no more callbacks will fire.
 final class CGEventsTapAsyncStreamBridge {
     let callback: CGEventsStreamCallback
     let ctx: UnsafeMutableRawPointer?
     var port: CFMachPort?
     var runLoopSource: CFRunLoopSource?
     var runLoop: CFRunLoop?
+    /// Signalled by the tap thread after `CFRunLoopRun()` returns.
+    private let threadExitSema = DispatchSemaphore(value: 0)
 
     init(callback: @escaping CGEventsStreamCallback, ctx: UnsafeMutableRawPointer?) {
         self.callback = callback
@@ -78,7 +80,10 @@ final class CGEventsTapAsyncStreamBridge {
             CGEvent.tapEnable(tap: port, enable: true)
             sema.signal() // signal *after* tap is fully installed
 
-            CFRunLoopRun() // blocks until deinit calls CFRunLoopStop
+            CFRunLoopRun() // blocks until stopAndJoin() calls CFRunLoopStop
+
+            // Notify stopAndJoin() that the run-loop thread has fully exited.
+            bridge.threadExitSema.signal()
         }
         thread.name = "com.doom-fish.cgevents.async-tap"
         thread.start()
@@ -88,7 +93,10 @@ final class CGEventsTapAsyncStreamBridge {
         return bridge
     }
 
-    deinit {
+    /// Disable the tap, stop the run-loop thread, and block until the thread
+    /// has fully exited.  Must be called before releasing the bridge so that
+    /// no in-flight callback can observe a freed Rust sender pointer.
+    func stopAndJoin() {
         if let port = port {
             CGEvent.tapEnable(tap: port, enable: false)
             CFMachPortInvalidate(port)
@@ -97,9 +105,32 @@ final class CGEventsTapAsyncStreamBridge {
             CFRunLoopRemoveSource(rl, src, .commonModes)
         }
         if let rl = runLoop {
-            // Wake and stop the run-loop thread.
+            // Signals CFRunLoopRun() to return on the tap thread.
             CFRunLoopStop(rl)
         }
+        // Wait for the tap thread to fully exit before returning to the Rust
+        // caller, which will immediately free the sender pointer.
+        threadExitSema.wait()
+    }
+
+    deinit {
+        // By the time deinit runs the tap thread has already exited (it held
+        // the last strong reference that delayed deallocation), so stopAndJoin()
+        // has necessarily been called already.  The cleanup calls below are a
+        // defence-in-depth no-op guard against unexpected reference patterns.
+        if let port = port {
+            CGEvent.tapEnable(tap: port, enable: false)
+            CFMachPortInvalidate(port)
+        }
+        if let src = runLoopSource, let rl = runLoop {
+            CFRunLoopRemoveSource(rl, src, .commonModes)
+        }
+        if let rl = runLoop {
+            CFRunLoopStop(rl)
+        }
+        // Do NOT call threadExitSema.wait() here — the thread has already
+        // signalled it (it held the last strong ref that gated this deinit),
+        // so waiting again would deadlock.
     }
 }
 
@@ -167,11 +198,17 @@ public func cgeventsTapStreamSubscribe(
 
 /// Release the async tap bridge returned by `cgevents_tap_stream_subscribe`.
 ///
-/// This disables the tap, invalidates the mach port, and stops the
-/// dedicated run-loop thread. After this call, no more callbacks will be
-/// delivered.
+/// Calls `stopAndJoin()` first to disable the tap and block until the
+/// dedicated run-loop thread has fully exited, guaranteeing that no further
+/// callbacks will fire after this function returns.  Only then is the bridge
+/// object released.
 @_cdecl("cgevents_tap_stream_unsubscribe")
 public func cgeventsTapStreamUnsubscribe(handle: UnsafeMutableRawPointer?) {
     guard let handle = handle else { return }
-    Unmanaged<CGEventsTapAsyncStreamBridge>.fromOpaque(handle).release()
+    let unmanaged = Unmanaged<CGEventsTapAsyncStreamBridge>.fromOpaque(handle)
+    // Stop the run-loop thread and wait for it to exit before releasing the
+    // bridge.  This ensures the Rust caller can safely free the sender pointer
+    // immediately after this function returns.
+    unmanaged.takeUnretainedValue().stopAndJoin()
+    unmanaged.release()
 }

@@ -275,16 +275,22 @@ unsafe extern "C" fn trampoline(
     _type: u32,
     event: *mut c_void,
 ) -> i32 {
+    // SAFETY: `context` is a `Box<TapInner>` that outlives the tap (owned by
+    // the `EventTap` struct alongside the mach-port handle).  The pointer is
+    // valid for the entire lifetime of the installed tap.
     let inner: &TapInner = unsafe { &*context.cast::<TapInner>() };
     let tapped = TappedEvent {
         ptr: event,
         proxy,
         _phantom: core::marker::PhantomData,
     };
-    let action = inner
-        .callback
-        .lock()
-        .map_or(TapAction::Pass, |mut callback| callback(&tapped));
+    let mut action = TapAction::Pass;
+    doom_fish_utils::panic_safe::catch_user_panic("EventTap trampoline", || {
+        action = inner
+            .callback
+            .lock()
+            .map_or(TapAction::Pass, |mut callback| callback(&tapped));
+    });
     match action {
         TapAction::Pass => 0,
         TapAction::Drop => 1,

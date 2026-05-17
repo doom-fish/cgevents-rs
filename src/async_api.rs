@@ -127,9 +127,10 @@ unsafe impl Sync for TapSubscriptionHandle {}
 impl Drop for TapSubscriptionHandle {
     fn drop(&mut self) {
         if !self.swift_handle.is_null() {
-            // Disables the tap and stops the run-loop thread synchronously.
-            // After this returns, no more `tap_stream_callback` invocations
-            // can occur.
+            // Disables the tap, stops the run-loop thread, and blocks until
+            // the thread has fully exited (via `stopAndJoin()` on the Swift
+            // side).  After this returns, no more `tap_stream_callback`
+            // invocations can occur and it is safe to free the sender pointer.
             unsafe { ffi::cgevents_tap_stream_unsubscribe(self.swift_handle) };
             self.swift_handle = std::ptr::null_mut();
         }
