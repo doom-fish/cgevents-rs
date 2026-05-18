@@ -47,12 +47,7 @@ pub type CGEventFilterMask = u32;
 pub type CGEventSuppressionState = u32;
 pub type CGEventTapProxy = *mut c_void;
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct CGPoint {
-    pub x: f64,
-    pub y: f64,
-}
+pub use apple_cf::cg::CGPoint;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]

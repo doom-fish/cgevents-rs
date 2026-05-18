@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0] - 2026-05-18
+
+### Changed
+
+- Re-export `apple_cf::cg::CGPoint` from both `src/raw_ffi.rs` and `src/ffi/mod.rs`, removing the duplicate local definitions and aligning the crate's Core Graphics point type with the shared `apple-cf` surface.
+- Added `apple-cf = { version = ">=0.7, <0.9", default-features = false, features = ["cg"] }`.
+
 ## [0.6.1] - 2026-05-17
 
 ### Fixed
