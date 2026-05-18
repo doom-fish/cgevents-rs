@@ -9,13 +9,10 @@
 
 use core::ffi::c_void;
 
-pub type CFTypeRef = *const c_void;
-pub type CFAllocatorRef = *const c_void;
-pub type CFDataRef = *const c_void;
-pub type CFRunLoopRef = *mut c_void;
-pub type CFRunLoopSourceRef = *mut c_void;
-pub type CFMachPortRef = *mut c_void;
-pub type CFStringRef = *const c_void;
+pub use apple_cf::raw::{
+    CFAllocatorRef, CFDataRef, CFMachPortRef, CFRunLoopRef, CFRunLoopSourceRef, CFStringRef,
+    CFTypeRef,
+};
 pub type CFIndex = isize;
 pub type CFTypeID = usize;
 pub type CFTimeInterval = f64;

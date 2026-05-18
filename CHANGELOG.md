@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0] - 2026-05-18
+
+### Changed
+
+- Re-exported `CFAllocatorRef`, `CFDataRef`, `CFMachPortRef`, `CFRunLoopRef`, `CFRunLoopSourceRef`, `CFStringRef`, and `CFTypeRef` from `apple_cf::raw` in both `raw_ffi` and `ffi`, removing seven duplicate local Core Foundation reference typedefs.
+- Bumped the crate to `0.9.0` for the shared `apple-cf` raw Core Foundation surface.
+
 ## [0.8.0] - 2026-05-18
 
 ### Changed

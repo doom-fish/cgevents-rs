@@ -9,6 +9,11 @@
 
 use core::ffi::c_void;
 
+pub use apple_cf::raw::{
+    CFAllocatorRef, CFDataRef, CFMachPortRef, CFRunLoopRef, CFRunLoopSourceRef, CFStringRef,
+    CFTypeRef,
+};
+
 pub type CGEventBridgeHandle = *mut c_void;
 pub type CGEventSourceBridgeHandle = *mut c_void;
 pub type CGEventTapBridgeHandle = *mut c_void;
