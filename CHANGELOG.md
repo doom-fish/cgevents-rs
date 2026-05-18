@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0] - 2026-05-18
+
+### Changed
+
+- Re-exported `CFIndex`, `CFTypeID`, `CFTimeInterval`, `CGCharCode`, and `CGKeyCode` from `apple_cf::raw`, removing five duplicate local CF/CG typedefs from `raw_ffi`.
+- Widened `apple-cf` to `>=0.9, <0.10` and bumped the crate to `0.10.0`.
+
 ## [0.9.0] - 2026-05-18
 
 ### Changed

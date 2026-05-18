@@ -10,18 +10,13 @@
 use core::ffi::c_void;
 
 pub use apple_cf::raw::{
-    CFAllocatorRef, CFDataRef, CFMachPortRef, CFRunLoopRef, CFRunLoopSourceRef, CFStringRef,
-    CFTypeRef,
+    CFAllocatorRef, CFDataRef, CFIndex, CFMachPortRef, CFRunLoopRef, CFRunLoopSourceRef,
+    CFStringRef, CFTimeInterval, CFTypeID, CFTypeRef, CGCharCode, CGKeyCode,
 };
-pub type CFIndex = isize;
-pub type CFTypeID = usize;
-pub type CFTimeInterval = f64;
 
 pub type CGError = i32;
 pub type CGEventRef = *mut c_void;
 pub type CGEventSourceRef = *mut c_void;
-pub type CGKeyCode = u16;
-pub type CGCharCode = u16;
 pub type CGButtonCount = u32;
 pub type CGWheelCount = u32;
 pub type CGEventTimestamp = u64;
