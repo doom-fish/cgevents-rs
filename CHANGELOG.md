@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0] - 2026-05-18
+
+### Changed
+
+- Bumped the crate to `0.8.0` to track `apple-cf` 0.8.x while keeping the shared `apple_cf::cg::CGPoint` surface unchanged.
+- Audited internal `CGRect` usage for the nested-layout update; no `CGRect` call sites or legacy field accessors required changes.
+
 ## [0.7.0] - 2026-05-18
 
 ### Changed
