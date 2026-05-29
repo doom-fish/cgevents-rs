@@ -45,6 +45,20 @@ public struct FFIEventTapInformation {
     }
 }
 
+/// Cross-language ABI check called from Rust's `tests/ffi_layout_tests.rs`.
+///
+/// Returns `true` only if the Swift `MemoryLayout` (size, stride and alignment)
+/// of `FFIEventTapInformation` matches the values pinned on the Rust side via
+/// the `const _: () = assert!(...)` checks in `src/ffi/mod.rs`. If the layouts
+/// ever drift apart this returns `false` and the Rust test fails, flagging a
+/// real ABI mismatch.
+@_cdecl("cgevent_verify_ffi_layout")
+public func cgeventVerifyFFILayout() -> Bool {
+    MemoryLayout<FFIEventTapInformation>.size == 48
+        && MemoryLayout<FFIEventTapInformation>.stride == 48
+        && MemoryLayout<FFIEventTapInformation>.alignment == 8
+}
+
 final class EventHolder {
     let event: CGEvent
 
@@ -76,17 +90,36 @@ public typealias RustTapCallback = @convention(c) (
     UnsafeMutableRawPointer?
 ) -> Int32
 
+/// C trampoline that takes a +1 reference on the Rust tap context.
+public typealias ContextRetainCallback = @convention(c) (UnsafeMutableRawPointer?) -> Void
+
+/// C trampoline that drops a reference on the Rust tap context.
+public typealias ContextReleaseCallback = @convention(c) (UnsafeMutableRawPointer?) -> Void
+
 final class EventTapHolder {
     let callback: RustTapCallback
     let context: UnsafeMutableRawPointer?
+    let contextRelease: ContextReleaseCallback
     let runLoop: CFRunLoop
     var port: CFMachPort?
     var runLoopSource: CFRunLoopSource?
 
-    init(callback: @escaping RustTapCallback, context: UnsafeMutableRawPointer?, runLoop: CFRunLoop) {
+    init(
+        callback: @escaping RustTapCallback,
+        context: UnsafeMutableRawPointer?,
+        contextRetain: ContextRetainCallback,
+        contextRelease: @escaping ContextReleaseCallback,
+        runLoop: CFRunLoop
+    ) {
         self.callback = callback
         self.context = context
+        self.contextRelease = contextRelease
         self.runLoop = runLoop
+        // Take a +1 on the Rust TapInner for the lifetime of this holder. ARC
+        // keeps this holder alive for the duration of each tap callback, so the
+        // Rust context can never be freed while a callback is in flight — even
+        // if the owning Rust `EventTap` is dropped from another thread.
+        contextRetain(context)
     }
 
     static func create(
@@ -95,9 +128,17 @@ final class EventTapHolder {
         options: CGEventTapOptions,
         eventsOfInterest: CGEventMask,
         callback: @escaping RustTapCallback,
-        context: UnsafeMutableRawPointer?
+        context: UnsafeMutableRawPointer?,
+        contextRetain: ContextRetainCallback,
+        contextRelease: @escaping ContextReleaseCallback
     ) -> EventTapHolder? {
-        let holder = EventTapHolder(callback: callback, context: context, runLoop: CFRunLoopGetCurrent())
+        let holder = EventTapHolder(
+            callback: callback,
+            context: context,
+            contextRetain: contextRetain,
+            contextRelease: contextRelease,
+            runLoop: CFRunLoopGetCurrent()
+        )
         let userInfo = Unmanaged.passUnretained(holder).toOpaque()
         guard let port = CGEvent.tapCreate(
             tap: location,
@@ -126,9 +167,17 @@ final class EventTapHolder {
         options: CGEventTapOptions,
         eventsOfInterest: CGEventMask,
         callback: @escaping RustTapCallback,
-        context: UnsafeMutableRawPointer?
+        context: UnsafeMutableRawPointer?,
+        contextRetain: ContextRetainCallback,
+        contextRelease: @escaping ContextReleaseCallback
     ) -> EventTapHolder? {
-        let holder = EventTapHolder(callback: callback, context: context, runLoop: CFRunLoopGetCurrent())
+        let holder = EventTapHolder(
+            callback: callback,
+            context: context,
+            contextRetain: contextRetain,
+            contextRelease: contextRelease,
+            runLoop: CFRunLoopGetCurrent()
+        )
         let userInfo = Unmanaged.passUnretained(holder).toOpaque()
         guard let port = CGEvent.tapCreateForPid(
             pid: pid,
@@ -152,12 +201,18 @@ final class EventTapHolder {
     }
 
     deinit {
+        // ARC defers this `deinit` until no callback is in flight (each callback
+        // holds a strong reference to the holder for its duration), so removing
+        // the run-loop source and invalidating the port here cannot race with a
+        // running callback. We drop the Rust context reference last, balancing
+        // the `contextRetain` taken in `init`.
         if let runLoopSource {
             CFRunLoopRemoveSource(runLoop, runLoopSource, .commonModes)
         }
         if let port {
             CFMachPortInvalidate(port)
         }
+        contextRelease(context)
     }
 }
 

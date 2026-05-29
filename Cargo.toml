@@ -48,6 +48,12 @@ bitflags = "2"
 doom-fish-utils = { path = "../doom-fish-utils", version = ">=0.1, <0.4" }
 
 [dev-dependencies]
+# Cap bitflags below 2.12: bitflags 2.12.0 raised its MSRV / overflows the
+# macro recursion limit in dependent crates, breaking lint and test builds on
+# this crate's pinned MSRV. This is a dev-only constraint and does not affect
+# the published dependency set (the runtime `bitflags = "2"` dependency above
+# stays unconstrained for downstream consumers).
+bitflags = ">=2.0, <2.12"
 regex-lite = "0.1"
 pollster = "0.3"
 

@@ -2,6 +2,7 @@
 
 use core::ffi::c_void;
 use core::ptr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use crate::cg_event_field::CGEventField;
@@ -215,8 +216,85 @@ impl TappedEvent<'_> {
 
 type Callback = Box<dyn FnMut(&TappedEvent<'_>) -> TapAction + Send + 'static>;
 
+/// Heap-allocated, reference-counted state shared with the Swift bridge.
+///
+/// The tap callback fires on whatever thread drives the run loop the tap was
+/// installed on, while [`EventTap`] is `Send`/`Sync` and may be dropped from a
+/// *different* thread. A bare `Box<TapInner>` owned solely by `EventTap` would
+/// therefore be freed out from under an in-flight `CFRunLoop` callback (a
+/// use-after-free). To prevent that, `TapInner` is reference counted
+/// (Arc-style): `EventTap` holds one reference and the Swift `EventTapHolder`
+/// holds another (taken in its `init` via [`context_retain_cb`], dropped in
+/// `deinit` via [`context_release_cb`]). Because ARC keeps the holder alive for
+/// the duration of each callback, the holder's reference — and thus `TapInner`
+/// — outlives every in-flight callback. The allocation is freed only once both
+/// sides have released.
 struct TapInner {
     callback: Mutex<Callback>,
+    ref_count: AtomicUsize,
+}
+
+impl TapInner {
+    fn new(callback: Callback) -> *mut Self {
+        Box::into_raw(Box::new(Self {
+            callback: Mutex::new(callback),
+            ref_count: AtomicUsize::new(1),
+        }))
+    }
+
+    /// Increment the reference count.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must point to a valid, live `TapInner`.
+    unsafe fn retain(ptr: *mut Self) {
+        unsafe { &*ptr }.ref_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Decrement the reference count, freeing the allocation if it reaches zero.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must point to a valid, live `TapInner`. After this call `ptr` must
+    /// not be used if the allocation was freed.
+    unsafe fn release(ptr: *mut Self) {
+        if ptr.is_null() {
+            return;
+        }
+        let prev = unsafe { &*ptr }.ref_count.fetch_sub(1, Ordering::Release);
+        if prev == 1 {
+            // The Acquire fence pairs with the Release stores from other
+            // threads' `fetch_sub` calls so the freeing thread observes all of
+            // their happened-before writes. This is the canonical Arc-style
+            // refcount drop (see `std::sync::Arc::drop`); removing it is
+            // unsound on weakly-ordered architectures (e.g. AArch64).
+            std::sync::atomic::fence(Ordering::Acquire);
+            drop(unsafe { Box::from_raw(ptr) });
+        }
+    }
+}
+
+/// Compile-time assertion that `TapInner` is `Send + Sync`, which the
+/// `unsafe impl Send + Sync for EventTap` below relies on.
+const _: fn() = || {
+    const fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<TapInner>();
+};
+
+// C trampoline handed to the Swift bridge so the `EventTapHolder` can take a
+// +1 reference on the `TapInner` for the duration of its own lifetime, keeping
+// the context alive while any callback can still be dispatched on it.
+extern "C" fn context_retain_cb(context: *mut c_void) {
+    if !context.is_null() {
+        unsafe { TapInner::retain(context.cast::<TapInner>()) };
+    }
+}
+
+// C trampoline handed to the Swift bridge, invoked from `EventTapHolder.deinit`
+// to drop the +1 reference taken in `context_retain_cb`. `TapInner::release`
+// null-checks internally.
+extern "C" fn context_release_cb(context: *mut c_void) {
+    unsafe { TapInner::release(context.cast::<TapInner>()) };
 }
 
 /// Snapshot of one installed event tap returned by [`EventTap::installed`].
@@ -254,18 +332,33 @@ impl From<ffi::CGEventTapInformation> for EventTapInformation {
 /// A live event tap. Drops the underlying mach port on scope exit.
 pub struct EventTap {
     ptr: ffi::CGEventTapBridgeHandle,
-    _inner: Box<TapInner>,
+    context: *mut TapInner,
 }
 
 unsafe impl Send for EventTap {}
 unsafe impl Sync for EventTap {}
 
 impl Drop for EventTap {
+    // Teardown ordering: release the Swift tap first, then drop our reference to
+    // the context.
+    //
+    // `cgevent_tap_release` drops the Rust-side strong reference on the Swift
+    // `EventTapHolder`. The holder's `deinit` (which removes the run-loop source
+    // and invalidates the mach port, stopping *new* callbacks) only runs once no
+    // callback is in flight, because ARC keeps the holder alive for the duration
+    // of each callback. The holder's `deinit` then calls `context_release_cb`,
+    // dropping its reference on `TapInner`.
+    //
+    // We drop `EventTap`'s own `TapInner` reference afterwards. The final
+    // `Box::from_raw` therefore happens only once both this `EventTap` and the
+    // Swift holder (and hence every in-flight callback) have released — so a
+    // callback can never observe a freed context.
     fn drop(&mut self) {
         if !self.ptr.is_null() {
             unsafe { ffi::cg_event_tap::cgevent_tap_release(self.ptr) };
             self.ptr = ptr::null_mut();
         }
+        unsafe { TapInner::release(self.context) };
     }
 }
 
@@ -275,9 +368,11 @@ unsafe extern "C" fn trampoline(
     _type: u32,
     event: *mut c_void,
 ) -> i32 {
-    // SAFETY: `context` is a `Box<TapInner>` that outlives the tap (owned by
-    // the `EventTap` struct alongside the mach-port handle).  The pointer is
-    // valid for the entire lifetime of the installed tap.
+    // SAFETY: `context` is a reference-counted `TapInner`. The Swift
+    // `EventTapHolder` holds a +1 reference for its whole lifetime and ARC keeps
+    // that holder alive for the duration of this callback, so the context cannot
+    // be freed while this function runs — even if the owning `EventTap` is
+    // concurrently dropped from another thread.
     let inner: &TapInner = unsafe { &*context.cast::<TapInner>() };
     let tapped = TappedEvent {
         ptr: event,
@@ -331,10 +426,7 @@ impl EventTap {
     where
         F: FnMut(&TappedEvent<'_>) -> TapAction + Send + 'static,
     {
-        let inner = Box::new(TapInner {
-            callback: Mutex::new(Box::new(callback)),
-        });
-        let context = std::ptr::addr_of!(*inner).cast::<c_void>().cast_mut();
+        let context = TapInner::new(Box::new(callback));
         let ptr = unsafe {
             ffi::cg_event_tap::cgevent_tap_create(
                 location.raw(),
@@ -342,13 +434,16 @@ impl EventTap {
                 options.raw(),
                 events_mask,
                 trampoline,
-                context,
+                context.cast::<c_void>(),
+                context_retain_cb,
+                context_release_cb,
             )
         };
         if ptr.is_null() {
+            unsafe { TapInner::release(context) };
             Err(CGError::TapCreateFailed)
         } else {
-            Ok(Self { ptr, _inner: inner })
+            Ok(Self { ptr, context })
         }
     }
 
@@ -367,10 +462,7 @@ impl EventTap {
     where
         F: FnMut(&TappedEvent<'_>) -> TapAction + Send + 'static,
     {
-        let inner = Box::new(TapInner {
-            callback: Mutex::new(Box::new(callback)),
-        });
-        let context = std::ptr::addr_of!(*inner).cast::<c_void>().cast_mut();
+        let context = TapInner::new(Box::new(callback));
         let ptr = unsafe {
             ffi::cg_event_tap::cgevent_tap_create_for_pid(
                 pid,
@@ -378,13 +470,16 @@ impl EventTap {
                 options.raw(),
                 events_mask,
                 trampoline,
-                context,
+                context.cast::<c_void>(),
+                context_retain_cb,
+                context_release_cb,
             )
         };
         if ptr.is_null() {
+            unsafe { TapInner::release(context) };
             Err(CGError::TapCreateFailed)
         } else {
-            Ok(Self { ptr, _inner: inner })
+            Ok(Self { ptr, context })
         }
     }
 

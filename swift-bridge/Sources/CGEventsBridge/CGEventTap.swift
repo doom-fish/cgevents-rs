@@ -31,7 +31,9 @@ public func cgeventTapCreate(
     options: UInt32,
     eventsOfInterest: UInt64,
     callback: @escaping RustTapCallback,
-    context: UnsafeMutableRawPointer?
+    context: UnsafeMutableRawPointer?,
+    contextRetain: @escaping ContextRetainCallback,
+    contextRelease: @escaping ContextReleaseCallback
 ) -> UnsafeMutableRawPointer? {
     guard let location = CGEventTapLocation(rawValue: location), let place = CGEventTapPlacement(rawValue: place) else {
         return nil
@@ -42,7 +44,9 @@ public func cgeventTapCreate(
         options: CGEventTapOptions(rawValue: options) ?? .defaultTap,
         eventsOfInterest: eventsOfInterest,
         callback: callback,
-        context: context
+        context: context,
+        contextRetain: contextRetain,
+        contextRelease: contextRelease
     ) else {
         return nil
     }
@@ -56,7 +60,9 @@ public func cgeventTapCreateForPid(
     options: UInt32,
     eventsOfInterest: UInt64,
     callback: @escaping RustTapCallback,
-    context: UnsafeMutableRawPointer?
+    context: UnsafeMutableRawPointer?,
+    contextRetain: @escaping ContextRetainCallback,
+    contextRelease: @escaping ContextReleaseCallback
 ) -> UnsafeMutableRawPointer? {
     guard let place = CGEventTapPlacement(rawValue: place) else { return nil }
     guard let holder = EventTapHolder.createForPid(
@@ -65,7 +71,9 @@ public func cgeventTapCreateForPid(
         options: CGEventTapOptions(rawValue: options) ?? .defaultTap,
         eventsOfInterest: eventsOfInterest,
         callback: callback,
-        context: context
+        context: context,
+        contextRetain: contextRetain,
+        contextRelease: contextRelease
     ) else {
         return nil
     }
