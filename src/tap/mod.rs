@@ -496,9 +496,13 @@ impl EventTap {
         unsafe { ffi::cg_event_tap::cgevent_tap_stop(self.ptr) };
     }
 
-    /// Run the current thread's run loop forever. Blocks.
-    pub fn run(&self) {
-        unsafe { ffi::cg_event_tap::cgevent_tap_run_current_run_loop() };
+    #[allow(clippy::missing_errors_doc)]
+    pub fn run(&self) -> Result<(), CGError> {
+        if unsafe { ffi::cg_event_tap::cgevent_tap_run(self.ptr) } {
+            Ok(())
+        } else {
+            Err(CGError::WrongThread)
+        }
     }
 
     /// Stop a running run loop. Call from the same thread or another callback-triggered context.

@@ -129,9 +129,13 @@ public func cgeventTapIsEnabled(tap: UnsafeMutableRawPointer?) -> Bool {
     return CGEvent.tapIsEnabled(tap: holder.port)
 }
 
-@_cdecl("cgevent_tap_run_current_run_loop")
-public func cgeventTapRunCurrentRunLoop() {
+@_cdecl("cgevent_tap_run")
+public func cgeventTapRun(tap: UnsafeMutableRawPointer?) -> Bool {
+    guard let holder = tapHolderFromHandle(tap), holder.runLoop === CFRunLoopGetCurrent() else {
+        return false
+    }
     CFRunLoopRun()
+    return true
 }
 
 @_cdecl("cgevent_tap_stop_current_run_loop")
@@ -142,7 +146,7 @@ public func cgeventTapStopCurrentRunLoop() {
 @_cdecl("cgevent_tap_stop")
 public func cgeventTapStop(tap: UnsafeMutableRawPointer?) {
     guard let holder = tapHolderFromHandle(tap) else { return }
-    CFRunLoopStop(holder.runLoop)
+    requestRunLoopStop(holder.runLoop)
 }
 
 @_cdecl("cgevent_tap_release")

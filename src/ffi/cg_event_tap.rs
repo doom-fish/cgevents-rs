@@ -37,7 +37,7 @@ unsafe extern "C" {
     ) -> CGEventTapBridgeHandle;
     pub fn cgevent_tap_enable(tap: CGEventTapBridgeHandle, enable: bool);
     pub fn cgevent_tap_is_enabled(tap: CGEventTapBridgeHandle) -> bool;
-    pub fn cgevent_tap_run_current_run_loop();
+    pub fn cgevent_tap_run(tap: CGEventTapBridgeHandle) -> bool;
     pub fn cgevent_tap_stop_current_run_loop();
     pub fn cgevent_tap_stop(tap: CGEventTapBridgeHandle);
     pub fn cgevent_tap_release(tap: CGEventTapBridgeHandle);

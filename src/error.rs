@@ -20,6 +20,7 @@ pub enum CGError {
     },
     /// A Swift bridge precondition failed.
     BridgeError(String),
+    WrongThread,
 }
 
 impl fmt::Display for CGError {
@@ -36,6 +37,10 @@ impl fmt::Display for CGError {
                 write!(f, "{operation} failed with CGError code {code}")
             }
             Self::BridgeError(message) => write!(f, "Swift bridge error: {message}"),
+            Self::WrongThread => write!(
+                f,
+                "EventTap::run must be called on the thread that created the tap"
+            ),
         }
     }
 }

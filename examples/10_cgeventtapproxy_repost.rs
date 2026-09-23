@@ -42,7 +42,7 @@ fn run() {
         }
     };
 
-    thread::scope(|scope| {
+    let run_result = thread::scope(|scope| {
         scope.spawn(|| {
             thread::sleep(Duration::from_millis(50));
             let _ = KeyEvent::down(Keycode::A).post(TapLocation::Session);
@@ -51,8 +51,12 @@ fn run() {
             thread::sleep(Duration::from_millis(250));
             tap.stop();
         });
-        tap.run();
+        tap.run()
     });
+    if let Err(error) = run_result {
+        println!("tap run failed ({error}); skipping tap-proxy example");
+        return;
+    }
 
     assert!(seen.load(Ordering::SeqCst));
     println!("proxy_reposted=true");

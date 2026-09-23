@@ -94,3 +94,45 @@ fn a_tap_dropped_after_its_thread_exited() {
     assert!(started.elapsed() < Duration::from_secs(1));
     assert_eq!(Arc::strong_count(&token), 1);
 }
+
+#[test]
+fn a_stop_requested_before_run_is_not_lost() {
+    let token = Arc::new(());
+    let (tap_tx, tap_rx) = mpsc::channel();
+    let (start_tx, start_rx) = mpsc::channel::<()>();
+    let (done_tx, done_rx) = mpsc::channel();
+    {
+        let token = Arc::clone(&token);
+        thread::spawn(move || {
+            let Some(tap) = passive_tap(&token).map(Arc::new) else {
+                let _ = tap_tx.send(None);
+                return;
+            };
+            tap_tx.send(Some(Arc::clone(&tap))).expect("send tap");
+            start_rx.recv().expect("start signal");
+            let _ = done_tx.send(tap.run());
+        });
+    }
+
+    let Some(tap) = tap_rx.recv().expect("tap from owner thread") else {
+        return;
+    };
+    tap.stop();
+    start_tx.send(()).expect("start the run loop");
+    let outcome = done_rx.recv_timeout(Duration::from_secs(10));
+    assert!(
+        matches!(outcome, Ok(Ok(()))),
+        "a stop requested before run() was lost: {outcome:?}"
+    );
+    drop(tap);
+}
+
+#[test]
+fn run_off_the_tap_thread_is_rejected() {
+    let token = Arc::new(());
+    let Some(tap) = passive_tap(&token) else {
+        return;
+    };
+    let outcome = thread::scope(|scope| scope.spawn(|| tap.run()).join().expect("runner"));
+    assert!(matches!(outcome, Err(CGError::WrongThread)));
+}

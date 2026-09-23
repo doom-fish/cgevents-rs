@@ -42,8 +42,8 @@ fn cgeventtapproxy_can_repost_event() -> Result<(), Box<dyn std::error::Error>> 
             thread::sleep(Duration::from_millis(250));
             tap.stop();
         });
-        tap.run();
-    });
+        tap.run()
+    })?;
 
     assert!(seen.load(Ordering::SeqCst));
     Ok(())

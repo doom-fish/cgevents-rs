@@ -193,6 +193,14 @@ final class EventTapHolder {
     }
 }
 
+func requestRunLoopStop(_ runLoop: CFRunLoop) {
+    CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) {
+        CFRunLoopStop(CFRunLoopGetCurrent())
+    }
+    CFRunLoopStop(runLoop)
+    CFRunLoopWakeUp(runLoop)
+}
+
 func retain(_ object: AnyObject) -> UnsafeMutableRawPointer {
     Unmanaged.passRetained(object).toOpaque()
 }
