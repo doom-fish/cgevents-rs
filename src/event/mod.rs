@@ -66,6 +66,19 @@ impl From<ffi::CGPoint> for Point {
     }
 }
 
+pub const MAX_UNICODE_STRING_LENGTH: usize = 20;
+
+pub(crate) fn keyboard_unicode_units(string: &str) -> Result<Vec<u16>, CGError> {
+    let utf16: Vec<u16> = string.encode_utf16().collect();
+    if utf16.len() > MAX_UNICODE_STRING_LENGTH {
+        return Err(CGError::InvalidArgument(format!(
+            "keyboard event strings are limited to {MAX_UNICODE_STRING_LENGTH} UTF-16 code units; got {}",
+            utf16.len()
+        )));
+    }
+    Ok(utf16)
+}
+
 /// A retained `CGEventRef`. Drops on scope exit.
 pub struct Event {
     pub(crate) ptr: ffi::CGEventBridgeHandle,
@@ -257,8 +270,9 @@ impl Event {
         unsafe { ffi::cg_event::cgevent_set_flags(self.ptr, flags.bits()) };
     }
 
-    pub fn set_unicode_string(&self, s: &str) {
-        let utf16: Vec<u16> = s.encode_utf16().collect();
+    #[allow(clippy::missing_errors_doc)]
+    pub fn set_unicode_string(&self, s: &str) -> Result<(), CGError> {
+        let utf16 = keyboard_unicode_units(s)?;
         unsafe {
             ffi::cg_event::cgevent_keyboard_set_unicode_string(
                 self.ptr,
@@ -266,6 +280,7 @@ impl Event {
                 utf16.len(),
             );
         };
+        Ok(())
     }
 
     #[must_use]
@@ -437,7 +452,7 @@ impl KeyEvent {
             event.set_flags(self.flags);
         }
         if let Some(unicode) = &self.unicode {
-            event.set_unicode_string(unicode);
+            event.set_unicode_string(unicode)?;
         }
         Ok(event)
     }

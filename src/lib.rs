@@ -50,6 +50,7 @@ pub use cg_scroll_phase::CGScrollPhase;
 pub use error::CGError;
 pub use event::{
     type_string, Event, KeyEvent, Keycode, MouseButton, MouseEvent, Point, ScrollEvent,
+    MAX_UNICODE_STRING_LENGTH,
 };
 pub use source::{EventSource, LocalEventsFilter, SourceState, SuppressionState};
 pub use tap::{
@@ -72,6 +73,7 @@ pub mod prelude {
     pub use crate::error::CGError;
     pub use crate::event::{
         type_string, Event, KeyEvent, Keycode, MouseButton, MouseEvent, Point, ScrollEvent,
+        MAX_UNICODE_STRING_LENGTH,
     };
     pub use crate::source::{EventSource, LocalEventsFilter, SourceState, SuppressionState};
     pub use crate::tap::{EventTap, EventTapInformation, TapAction, TapPlacement, TappedEvent};

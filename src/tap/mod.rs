@@ -156,8 +156,9 @@ impl TappedEvent<'_> {
         }
     }
 
-    pub fn set_unicode_string(&self, string: &str) {
-        let utf16: Vec<u16> = string.encode_utf16().collect();
+    #[allow(clippy::missing_errors_doc)]
+    pub fn set_unicode_string(&self, string: &str) -> Result<(), CGError> {
+        let utf16 = crate::event::keyboard_unicode_units(string)?;
         unsafe {
             ffi::cg_event::cgevent_keyboard_set_unicode_string(
                 self.ptr,
@@ -165,6 +166,7 @@ impl TappedEvent<'_> {
                 utf16.len(),
             );
         };
+        Ok(())
     }
 
     #[must_use]
