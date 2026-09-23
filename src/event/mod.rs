@@ -218,7 +218,7 @@ impl Event {
     pub fn location(&self) -> Point {
         let mut x = 0.0;
         let mut y = 0.0;
-        unsafe { ffi::cg_event::cgevent_get_location(self.ptr, &mut x, &mut y) };
+        unsafe { ffi::cg_event::cgevent_get_location(self.ptr, &raw mut x, &raw mut y) };
         Point::new(x, y)
     }
 
@@ -227,7 +227,7 @@ impl Event {
     pub fn unflipped_location(&self) -> Point {
         let mut x = 0.0;
         let mut y = 0.0;
-        unsafe { ffi::cg_event::cgevent_get_unflipped_location(self.ptr, &mut x, &mut y) };
+        unsafe { ffi::cg_event::cgevent_get_unflipped_location(self.ptr, &raw mut x, &raw mut y) };
         Point::new(x, y)
     }
 

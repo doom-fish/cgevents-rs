@@ -71,7 +71,7 @@ impl TappedEvent<'_> {
     pub fn location(&self) -> Point {
         let mut x = 0.0;
         let mut y = 0.0;
-        unsafe { ffi::cg_event::cgevent_get_location(self.ptr, &mut x, &mut y) };
+        unsafe { ffi::cg_event::cgevent_get_location(self.ptr, &raw mut x, &raw mut y) };
         Point::new(x, y)
     }
 
@@ -574,7 +574,7 @@ impl EventTap {
     pub fn installed() -> Result<Vec<EventTapInformation>, CGError> {
         let mut count = 0_u32;
         let code = unsafe {
-            ffi::cg_event_tap::cgevent_get_event_tap_list(0, ptr::null_mut(), &mut count)
+            ffi::cg_event_tap::cgevent_get_event_tap_list(0, ptr::null_mut(), &raw mut count)
         };
         if code != 0 {
             return Err(CGError::CoreGraphicsError {
@@ -590,7 +590,7 @@ impl EventTap {
             ffi::cg_event_tap::cgevent_get_event_tap_list(
                 count,
                 raw.as_mut_ptr().cast(),
-                &mut count,
+                &raw mut count,
             )
         };
         if code != 0 {
