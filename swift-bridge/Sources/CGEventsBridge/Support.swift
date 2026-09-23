@@ -87,132 +87,109 @@ public typealias RustTapCallback = @convention(c) (
     UnsafeMutableRawPointer?,
     UnsafeMutableRawPointer?,
     UInt32,
-    UnsafeMutableRawPointer?
+    UnsafeMutableRawPointer?,
+    UnsafeMutablePointer<UnsafeMutableRawPointer?>?
 ) -> Int32
 
-/// C trampoline that takes a +1 reference on the Rust tap context.
 public typealias ContextRetainCallback = @convention(c) (UnsafeMutableRawPointer?) -> Void
 
-/// C trampoline that drops a reference on the Rust tap context.
 public typealias ContextReleaseCallback = @convention(c) (UnsafeMutableRawPointer?) -> Void
 
-final class EventTapHolder {
+let tapActionPass: Int32 = 0
+let tapActionDrop: Int32 = 1
+let tapActionReplace: Int32 = 2
+let tapActionReenable: Int32 = 3
+
+struct TapState {
     let callback: RustTapCallback
     let context: UnsafeMutableRawPointer?
     let contextRelease: ContextReleaseCallback
-    let runLoop: CFRunLoop
-    var port: CFMachPort?
-    var runLoopSource: CFRunLoopSource?
+    var port: Unmanaged<CFMachPort>?
+    var dispatchDepth = 0
+    var finalizePending = false
+}
 
-    init(
+func finalizeTapState(_ state: UnsafeMutablePointer<TapState>) {
+    let context = state.pointee.context
+    let contextRelease = state.pointee.contextRelease
+    state.deinitialize(count: 1)
+    state.deallocate()
+    contextRelease(context)
+}
+
+func finalizeTapStateWhenIdle(_ state: UnsafeMutablePointer<TapState>) {
+    if state.pointee.dispatchDepth > 0 {
+        state.pointee.finalizePending = true
+    } else {
+        finalizeTapState(state)
+    }
+}
+
+final class EventTapHolder {
+    let runLoop: CFRunLoop
+    let port: CFMachPort
+    let runLoopSource: CFRunLoopSource
+    private let state: UnsafeMutablePointer<TapState>
+
+    private init(
+        runLoop: CFRunLoop,
+        port: CFMachPort,
+        runLoopSource: CFRunLoopSource,
+        state: UnsafeMutablePointer<TapState>
+    ) {
+        self.runLoop = runLoop
+        self.port = port
+        self.runLoopSource = runLoopSource
+        self.state = state
+    }
+
+    static func install(
         callback: @escaping RustTapCallback,
         context: UnsafeMutableRawPointer?,
         contextRetain: ContextRetainCallback,
         contextRelease: @escaping ContextReleaseCallback,
-        runLoop: CFRunLoop
-    ) {
-        self.callback = callback
-        self.context = context
-        self.contextRelease = contextRelease
-        self.runLoop = runLoop
-        // Take a +1 on the Rust TapInner for the lifetime of this holder. ARC
-        // keeps this holder alive for the duration of each tap callback, so the
-        // Rust context can never be freed while a callback is in flight — even
-        // if the owning Rust `EventTap` is dropped from another thread.
+        createPort: (UnsafeMutableRawPointer) -> CFMachPort?
+    ) -> EventTapHolder? {
+        guard let runLoop = CFRunLoopGetCurrent() else {
+            return nil
+        }
+        let state = UnsafeMutablePointer<TapState>.allocate(capacity: 1)
+        state.initialize(to: TapState(callback: callback, context: context, contextRelease: contextRelease))
         contextRetain(context)
-    }
-
-    static func create(
-        location: CGEventTapLocation,
-        placement: CGEventTapPlacement,
-        options: CGEventTapOptions,
-        eventsOfInterest: CGEventMask,
-        callback: @escaping RustTapCallback,
-        context: UnsafeMutableRawPointer?,
-        contextRetain: ContextRetainCallback,
-        contextRelease: @escaping ContextReleaseCallback
-    ) -> EventTapHolder? {
-        let holder = EventTapHolder(
-            callback: callback,
-            context: context,
-            contextRetain: contextRetain,
-            contextRelease: contextRelease,
-            runLoop: CFRunLoopGetCurrent()
-        )
-        let userInfo = Unmanaged.passUnretained(holder).toOpaque()
-        guard let port = CGEvent.tapCreate(
-            tap: location,
-            place: placement,
-            options: options,
-            eventsOfInterest: eventsOfInterest,
-            callback: swiftTapCallback,
-            userInfo: userInfo
-        ) else {
+        guard let port = createPort(UnsafeMutableRawPointer(state)) else {
+            finalizeTapState(state)
             return nil
         }
         guard let runLoopSource = CFMachPortCreateRunLoopSource(nil, port, 0) else {
             CFMachPortInvalidate(port)
+            finalizeTapState(state)
             return nil
         }
-        holder.port = port
-        holder.runLoopSource = runLoopSource
-        CFRunLoopAddSource(holder.runLoop, runLoopSource, .commonModes)
+        state.pointee.port = Unmanaged.passUnretained(port)
+        CFRunLoopAddSource(runLoop, runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: port, enable: true)
-        return holder
+        return EventTapHolder(runLoop: runLoop, port: port, runLoopSource: runLoopSource, state: state)
     }
 
-    static func createForPid(
-        pid: Int32,
-        placement: CGEventTapPlacement,
-        options: CGEventTapOptions,
-        eventsOfInterest: CGEventMask,
-        callback: @escaping RustTapCallback,
-        context: UnsafeMutableRawPointer?,
-        contextRetain: ContextRetainCallback,
-        contextRelease: @escaping ContextReleaseCallback
-    ) -> EventTapHolder? {
-        let holder = EventTapHolder(
-            callback: callback,
-            context: context,
-            contextRetain: contextRetain,
-            contextRelease: contextRelease,
-            runLoop: CFRunLoopGetCurrent()
-        )
-        let userInfo = Unmanaged.passUnretained(holder).toOpaque()
-        guard let port = CGEvent.tapCreateForPid(
-            pid: pid,
-            place: placement,
-            options: options,
-            eventsOfInterest: eventsOfInterest,
-            callback: swiftTapCallback,
-            userInfo: userInfo
-        ) else {
-            return nil
+    func teardown() {
+        CGEvent.tapEnable(tap: port, enable: false)
+        CFRunLoopRemoveSource(runLoop, runLoopSource, .commonModes)
+        CFMachPortInvalidate(port)
+        let state = self.state
+        if runLoop === CFRunLoopGetCurrent() || CFRunLoopCopyCurrentMode(runLoop) == nil {
+            finalizeTapStateWhenIdle(state)
+            return
         }
-        guard let runLoopSource = CFMachPortCreateRunLoopSource(nil, port, 0) else {
-            CFMachPortInvalidate(port)
-            return nil
+        let port = self.port
+        let finalized = DispatchSemaphore(value: 0)
+        CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) {
+            withExtendedLifetime(port) {
+                finalizeTapStateWhenIdle(state)
+            }
+            finalized.signal()
         }
-        holder.port = port
-        holder.runLoopSource = runLoopSource
-        CFRunLoopAddSource(holder.runLoop, runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: port, enable: true)
-        return holder
-    }
-
-    deinit {
-        // ARC defers this `deinit` until no callback is in flight (each callback
-        // holds a strong reference to the holder for its duration), so removing
-        // the run-loop source and invalidating the port here cannot race with a
-        // running callback. We drop the Rust context reference last, balancing
-        // the `contextRetain` taken in `init`.
-        if let runLoopSource {
-            CFRunLoopRemoveSource(runLoop, runLoopSource, .commonModes)
-        }
-        if let port {
-            CFMachPortInvalidate(port)
-        }
-        contextRelease(context)
+        CFRunLoopWakeUp(runLoop)
+        _ = finalized.wait(timeout: .now() + .seconds(2))
     }
 }
 

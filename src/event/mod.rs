@@ -1,6 +1,6 @@
 //! High-level `CGEvent` wrapper + builders that synthesise, inspect, and post events.
 
-use core::ptr;
+use core::{fmt, ptr};
 
 use crate::cg_event_field::CGEventField;
 use crate::cg_event_flags::{CGEventFlags, ModifierFlags};
@@ -74,6 +74,14 @@ pub struct Event {
 unsafe impl Send for Event {}
 unsafe impl Sync for Event {}
 
+impl fmt::Debug for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Event")
+            .field("event_type", &self.event_type())
+            .finish_non_exhaustive()
+    }
+}
+
 impl Drop for Event {
     fn drop(&mut self) {
         if !self.ptr.is_null() {
@@ -84,6 +92,11 @@ impl Drop for Event {
 }
 
 impl Event {
+    pub(crate) fn into_raw(self) -> ffi::CGEventBridgeHandle {
+        let event = core::mem::ManuallyDrop::new(self);
+        event.ptr
+    }
+
     #[must_use]
     pub fn type_id() -> usize {
         unsafe { ffi::cg_event::cgevent_get_type_id() }

@@ -7,15 +7,12 @@ pub type RustTapCallback = unsafe extern "C" fn(
     proxy: CGEventTapProxyBridgeHandle,
     event_type: u32,
     event: *mut c_void,
+    replacement: *mut *mut c_void,
 ) -> i32;
 
-/// C trampoline the Swift bridge calls to take a +1 reference on the Rust tap
-/// context, keeping it alive for the lifetime of the Swift `EventTapHolder`.
-pub type ContextRetainCallback = extern "C" fn(context: *mut c_void);
+pub type ContextRetainCallback = unsafe extern "C" fn(context: *mut c_void);
 
-/// C trampoline the Swift bridge calls from `EventTapHolder.deinit` to drop the
-/// +1 reference taken via [`ContextRetainCallback`].
-pub type ContextReleaseCallback = extern "C" fn(context: *mut c_void);
+pub type ContextReleaseCallback = unsafe extern "C" fn(context: *mut c_void);
 
 unsafe extern "C" {
     pub fn cgevent_tap_create(

@@ -1,10 +1,6 @@
 import CoreFoundation
 import CoreGraphics
 
-private func tapActionPasses(_ action: Int32) -> Bool {
-    action == 0
-}
-
 private func proxyPointer(_ proxy: CGEventTapProxy) -> UnsafeMutableRawPointer? {
     UnsafeMutableRawPointer(proxy)
 }
@@ -15,13 +11,42 @@ func swiftTapCallback(
     event: CGEvent,
     userInfo: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
-    guard let holder = tapHolderFromHandle(userInfo) else {
+    guard let userInfo else {
         return Unmanaged.passUnretained(event)
     }
+    let state = userInfo.assumingMemoryBound(to: TapState.self)
+    let callback = state.pointee.callback
+    let context = state.pointee.context
     let borrowedEvent = makeBorrowedEventHandle(event)
-    let action = holder.callback(holder.context, proxyPointer(proxy), type.rawValue, borrowedEvent)
+    var replacement: UnsafeMutableRawPointer?
+    state.pointee.dispatchDepth += 1
+    let action = callback(context, proxyPointer(proxy), type.rawValue, borrowedEvent, &replacement)
+    state.pointee.dispatchDepth -= 1
     release(borrowedEvent)
-    return tapActionPasses(action) ? Unmanaged.passUnretained(event) : nil
+
+    if state.pointee.finalizePending {
+        if state.pointee.dispatchDepth == 0 {
+            finalizeTapState(state)
+        }
+    } else if action == tapActionReenable, let port = state.pointee.port {
+        CGEvent.tapEnable(tap: port.takeUnretainedValue(), enable: true)
+    }
+
+    switch action {
+    case tapActionDrop:
+        return nil
+    case tapActionReplace:
+        guard let replacement else {
+            return Unmanaged.passUnretained(event)
+        }
+        defer { release(replacement) }
+        guard let newEvent = eventFromHandle(replacement) else {
+            return Unmanaged.passUnretained(event)
+        }
+        return Unmanaged.passRetained(newEvent)
+    default:
+        return Unmanaged.passUnretained(event)
+    }
 }
 
 @_cdecl("cgevent_tap_create")
@@ -38,15 +63,21 @@ public func cgeventTapCreate(
     guard let location = CGEventTapLocation(rawValue: location), let place = CGEventTapPlacement(rawValue: place) else {
         return nil
     }
-    guard let holder = EventTapHolder.create(
-        location: location,
-        placement: place,
-        options: CGEventTapOptions(rawValue: options) ?? .defaultTap,
-        eventsOfInterest: eventsOfInterest,
+    let options = CGEventTapOptions(rawValue: options) ?? .defaultTap
+    guard let holder = EventTapHolder.install(
         callback: callback,
         context: context,
         contextRetain: contextRetain,
-        contextRelease: contextRelease
+        contextRelease: contextRelease,
+        createPort: { userInfo in
+            CGEvent.tapCreate(
+                tap: location,
+                place: place,
+                options: options,
+                eventsOfInterest: eventsOfInterest,
+                callback: swiftTapCallback,
+                userInfo: userInfo)
+        }
     ) else {
         return nil
     }
@@ -65,15 +96,21 @@ public func cgeventTapCreateForPid(
     contextRelease: @escaping ContextReleaseCallback
 ) -> UnsafeMutableRawPointer? {
     guard let place = CGEventTapPlacement(rawValue: place) else { return nil }
-    guard let holder = EventTapHolder.createForPid(
-        pid: pid,
-        placement: place,
-        options: CGEventTapOptions(rawValue: options) ?? .defaultTap,
-        eventsOfInterest: eventsOfInterest,
+    let options = CGEventTapOptions(rawValue: options) ?? .defaultTap
+    guard let holder = EventTapHolder.install(
         callback: callback,
         context: context,
         contextRetain: contextRetain,
-        contextRelease: contextRelease
+        contextRelease: contextRelease,
+        createPort: { userInfo in
+            CGEvent.tapCreateForPid(
+                pid: pid,
+                place: place,
+                options: options,
+                eventsOfInterest: eventsOfInterest,
+                callback: swiftTapCallback,
+                userInfo: userInfo)
+        }
     ) else {
         return nil
     }
@@ -82,14 +119,14 @@ public func cgeventTapCreateForPid(
 
 @_cdecl("cgevent_tap_enable")
 public func cgeventTapEnable(tap: UnsafeMutableRawPointer?, enable: Bool) {
-    guard let holder = tapHolderFromHandle(tap), let port = holder.port else { return }
-    CGEvent.tapEnable(tap: port, enable: enable)
+    guard let holder = tapHolderFromHandle(tap) else { return }
+    CGEvent.tapEnable(tap: holder.port, enable: enable)
 }
 
 @_cdecl("cgevent_tap_is_enabled")
 public func cgeventTapIsEnabled(tap: UnsafeMutableRawPointer?) -> Bool {
-    guard let holder = tapHolderFromHandle(tap), let port = holder.port else { return false }
-    return CGEvent.tapIsEnabled(tap: port)
+    guard let holder = tapHolderFromHandle(tap) else { return false }
+    return CGEvent.tapIsEnabled(tap: holder.port)
 }
 
 @_cdecl("cgevent_tap_run_current_run_loop")
@@ -110,6 +147,8 @@ public func cgeventTapStop(tap: UnsafeMutableRawPointer?) {
 
 @_cdecl("cgevent_tap_release")
 public func cgeventTapRelease(tap: UnsafeMutableRawPointer?) {
+    guard let holder = tapHolderFromHandle(tap) else { return }
+    holder.teardown()
     release(tap)
 }
 

@@ -2,8 +2,10 @@
 
 use core::ffi::c_void;
 use core::ptr;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, PoisonError, TryLockError};
+
+use doom_fish_utils::callback_context::CallbackContext;
 
 use crate::cg_event_field::CGEventField;
 use crate::cg_event_flags::CGEventFlags;
@@ -42,28 +44,30 @@ impl TapPlacement {
 }
 
 /// What the tap callback wants to do with an intercepted event.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum TapAction {
     Pass,
     Drop,
+    Replace(Event),
 }
 
 /// A view into one intercepted event. Lives only for the duration of the callback.
 pub struct TappedEvent<'a> {
     ptr: ffi::CGEventBridgeHandle,
     proxy: ffi::CGEventTapProxyBridgeHandle,
+    event_type: u32,
     _phantom: core::marker::PhantomData<&'a ()>,
 }
 
 impl TappedEvent<'_> {
     #[must_use]
-    pub fn event_type(&self) -> u32 {
-        unsafe { ffi::cg_event::cgevent_get_type(self.ptr) }
+    pub const fn event_type(&self) -> u32 {
+        self.event_type
     }
 
     #[must_use]
-    pub fn event_type_typed(&self) -> Option<CGEventType> {
+    pub const fn event_type_typed(&self) -> Option<CGEventType> {
         CGEventType::from_raw(self.event_type())
     }
 
@@ -216,85 +220,26 @@ impl TappedEvent<'_> {
 
 type Callback = Box<dyn FnMut(&TappedEvent<'_>) -> TapAction + Send + 'static>;
 
-/// Heap-allocated, reference-counted state shared with the Swift bridge.
-///
-/// The tap callback fires on whatever thread drives the run loop the tap was
-/// installed on, while [`EventTap`] is `Send`/`Sync` and may be dropped from a
-/// *different* thread. A bare `Box<TapInner>` owned solely by `EventTap` would
-/// therefore be freed out from under an in-flight `CFRunLoop` callback (a
-/// use-after-free). To prevent that, `TapInner` is reference counted
-/// (Arc-style): `EventTap` holds one reference and the Swift `EventTapHolder`
-/// holds another (taken in its `init` via [`context_retain_cb`], dropped in
-/// `deinit` via [`context_release_cb`]). Because ARC keeps the holder alive for
-/// the duration of each callback, the holder's reference — and thus `TapInner`
-/// — outlives every in-flight callback. The allocation is freed only once both
-/// sides have released.
-struct TapInner {
+const TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
+const TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFF_FFFF;
+
+const TAP_PASS: i32 = 0;
+const TAP_DROP: i32 = 1;
+const TAP_REPLACE: i32 = 2;
+const TAP_REENABLE: i32 = 3;
+
+struct TapState {
     callback: Mutex<Callback>,
-    ref_count: AtomicUsize,
+    auto_reenable: AtomicBool,
 }
 
-impl TapInner {
-    fn new(callback: Callback) -> *mut Self {
-        Box::into_raw(Box::new(Self {
-            callback: Mutex::new(callback),
-            ref_count: AtomicUsize::new(1),
-        }))
-    }
+type TapContext = CallbackContext<TapState>;
 
-    /// Increment the reference count.
-    ///
-    /// # Safety
-    ///
-    /// `ptr` must point to a valid, live `TapInner`.
-    unsafe fn retain(ptr: *mut Self) {
-        unsafe { &*ptr }.ref_count.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// Decrement the reference count, freeing the allocation if it reaches zero.
-    ///
-    /// # Safety
-    ///
-    /// `ptr` must point to a valid, live `TapInner`. After this call `ptr` must
-    /// not be used if the allocation was freed.
-    unsafe fn release(ptr: *mut Self) {
-        if ptr.is_null() {
-            return;
-        }
-        let prev = unsafe { &*ptr }.ref_count.fetch_sub(1, Ordering::Release);
-        if prev == 1 {
-            // The Acquire fence pairs with the Release stores from other
-            // threads' `fetch_sub` calls so the freeing thread observes all of
-            // their happened-before writes. This is the canonical Arc-style
-            // refcount drop (see `std::sync::Arc::drop`); removing it is
-            // unsound on weakly-ordered architectures (e.g. AArch64).
-            std::sync::atomic::fence(Ordering::Acquire);
-            drop(unsafe { Box::from_raw(ptr) });
-        }
-    }
-}
-
-/// Compile-time assertion that `TapInner` is `Send + Sync`, which the
-/// `unsafe impl Send + Sync for EventTap` below relies on.
-const _: fn() = || {
-    const fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<TapInner>();
-};
-
-// C trampoline handed to the Swift bridge so the `EventTapHolder` can take a
-// +1 reference on the `TapInner` for the duration of its own lifetime, keeping
-// the context alive while any callback can still be dispatched on it.
-extern "C" fn context_retain_cb(context: *mut c_void) {
-    if !context.is_null() {
-        unsafe { TapInner::retain(context.cast::<TapInner>()) };
-    }
-}
-
-// C trampoline handed to the Swift bridge, invoked from `EventTapHolder.deinit`
-// to drop the +1 reference taken in `context_retain_cb`. `TapInner::release`
-// null-checks internally.
-extern "C" fn context_release_cb(context: *mut c_void) {
-    unsafe { TapInner::release(context.cast::<TapInner>()) };
+fn new_tap_context(callback: Callback) -> TapContext {
+    TapContext::new(TapState {
+        callback: Mutex::new(callback),
+        auto_reenable: AtomicBool::new(true),
+    })
 }
 
 /// Snapshot of one installed event tap returned by [`EventTap::installed`].
@@ -332,63 +277,68 @@ impl From<ffi::CGEventTapInformation> for EventTapInformation {
 /// A live event tap. Drops the underlying mach port on scope exit.
 pub struct EventTap {
     ptr: ffi::CGEventTapBridgeHandle,
-    context: *mut TapInner,
+    context: TapContext,
 }
 
 unsafe impl Send for EventTap {}
 unsafe impl Sync for EventTap {}
 
 impl Drop for EventTap {
-    // Teardown ordering: release the Swift tap first, then drop our reference to
-    // the context.
-    //
-    // `cgevent_tap_release` drops the Rust-side strong reference on the Swift
-    // `EventTapHolder`. The holder's `deinit` (which removes the run-loop source
-    // and invalidates the mach port, stopping *new* callbacks) only runs once no
-    // callback is in flight, because ARC keeps the holder alive for the duration
-    // of each callback. The holder's `deinit` then calls `context_release_cb`,
-    // dropping its reference on `TapInner`.
-    //
-    // We drop `EventTap`'s own `TapInner` reference afterwards. The final
-    // `Box::from_raw` therefore happens only once both this `EventTap` and the
-    // Swift holder (and hence every in-flight callback) have released — so a
-    // callback can never observe a freed context.
     fn drop(&mut self) {
+        self.context.deactivate();
         if !self.ptr.is_null() {
             unsafe { ffi::cg_event_tap::cgevent_tap_release(self.ptr) };
             self.ptr = ptr::null_mut();
         }
-        unsafe { TapInner::release(self.context) };
     }
 }
 
 unsafe extern "C" fn trampoline(
     context: *mut c_void,
     proxy: ffi::CGEventTapProxyBridgeHandle,
-    _type: u32,
+    event_type: u32,
     event: *mut c_void,
+    replacement: *mut *mut c_void,
 ) -> i32 {
-    // SAFETY: `context` is a reference-counted `TapInner`. The Swift
-    // `EventTapHolder` holds a +1 reference for its whole lifetime and ARC keeps
-    // that holder alive for the duration of this callback, so the context cannot
-    // be freed while this function runs — even if the owning `EventTap` is
-    // concurrently dropped from another thread.
-    let inner: &TapInner = unsafe { &*context.cast::<TapInner>() };
     let tapped = TappedEvent {
         ptr: event,
         proxy,
+        event_type,
         _phantom: core::marker::PhantomData,
     };
-    let mut action = TapAction::Pass;
-    doom_fish_utils::panic_safe::catch_user_panic("EventTap trampoline", || {
-        action = inner
-            .callback
-            .lock()
-            .map_or(TapAction::Pass, |mut callback| callback(&tapped));
-    });
+    let outcome = unsafe {
+        TapContext::with(context, "EventTap callback", |state| {
+            let action = match state.callback.try_lock() {
+                Ok(mut callback) => callback(&tapped),
+                Err(TryLockError::Poisoned(poisoned)) => {
+                    let mut callback = PoisonError::into_inner(poisoned);
+                    callback(&tapped)
+                }
+                Err(TryLockError::WouldBlock) => TapAction::Pass,
+            };
+            (action, state.auto_reenable.load(Ordering::Relaxed))
+        })
+    };
+    let Some((action, auto_reenable)) = outcome else {
+        return TAP_PASS;
+    };
+    if event_type == TAP_DISABLED_BY_TIMEOUT || event_type == TAP_DISABLED_BY_USER_INPUT {
+        return if auto_reenable {
+            TAP_REENABLE
+        } else {
+            TAP_PASS
+        };
+    }
     match action {
-        TapAction::Pass => 0,
-        TapAction::Drop => 1,
+        TapAction::Pass => TAP_PASS,
+        TapAction::Drop => TAP_DROP,
+        TapAction::Replace(event) => {
+            if replacement.is_null() {
+                return TAP_PASS;
+            }
+            unsafe { *replacement = event.into_raw() };
+            TAP_REPLACE
+        }
     }
 }
 
@@ -426,7 +376,7 @@ impl EventTap {
     where
         F: FnMut(&TappedEvent<'_>) -> TapAction + Send + 'static,
     {
-        let context = TapInner::new(Box::new(callback));
+        let context = new_tap_context(Box::new(callback));
         let ptr = unsafe {
             ffi::cg_event_tap::cgevent_tap_create(
                 location.raw(),
@@ -434,13 +384,12 @@ impl EventTap {
                 options.raw(),
                 events_mask,
                 trampoline,
-                context.cast::<c_void>(),
-                context_retain_cb,
-                context_release_cb,
+                context.as_ptr(),
+                TapContext::RETAIN,
+                TapContext::RELEASE,
             )
         };
         if ptr.is_null() {
-            unsafe { TapInner::release(context) };
             Err(CGError::TapCreateFailed)
         } else {
             Ok(Self { ptr, context })
@@ -462,7 +411,7 @@ impl EventTap {
     where
         F: FnMut(&TappedEvent<'_>) -> TapAction + Send + 'static,
     {
-        let context = TapInner::new(Box::new(callback));
+        let context = new_tap_context(Box::new(callback));
         let ptr = unsafe {
             ffi::cg_event_tap::cgevent_tap_create_for_pid(
                 pid,
@@ -470,13 +419,12 @@ impl EventTap {
                 options.raw(),
                 events_mask,
                 trampoline,
-                context.cast::<c_void>(),
-                context_retain_cb,
-                context_release_cb,
+                context.as_ptr(),
+                TapContext::RETAIN,
+                TapContext::RELEASE,
             )
         };
         if ptr.is_null() {
-            unsafe { TapInner::release(context) };
             Err(CGError::TapCreateFailed)
         } else {
             Ok(Self { ptr, context })
@@ -529,6 +477,18 @@ impl EventTap {
 
     pub fn disable(&self) {
         unsafe { ffi::cg_event_tap::cgevent_tap_enable(self.ptr, false) };
+    }
+
+    #[must_use]
+    pub fn auto_reenable(&self) -> bool {
+        self.context.get().auto_reenable.load(Ordering::Relaxed)
+    }
+
+    pub fn set_auto_reenable(&self, enabled: bool) {
+        self.context
+            .get()
+            .auto_reenable
+            .store(enabled, Ordering::Relaxed);
     }
 
     /// Stop this tap's run loop from any thread.
@@ -601,5 +561,115 @@ impl EventTap {
         }
         raw.truncate(count as usize);
         Ok(raw.into_iter().map(EventTapInformation::from).collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use super::{
+        new_tap_context, trampoline, TapAction, TAP_DISABLED_BY_TIMEOUT,
+        TAP_DISABLED_BY_USER_INPUT, TAP_DROP, TAP_PASS, TAP_REENABLE, TAP_REPLACE,
+    };
+    use crate::cg_event_type::CGEventType;
+    use crate::event::{Event, KeyEvent};
+    use crate::source::EventSource;
+
+    fn deliver(
+        context: *mut core::ffi::c_void,
+        event: &Event,
+        event_type: u32,
+    ) -> (i32, Option<Event>) {
+        let mut replacement = core::ptr::null_mut();
+        let code = unsafe {
+            trampoline(
+                context,
+                core::ptr::null_mut(),
+                event_type,
+                event.ptr,
+                &raw mut replacement,
+            )
+        };
+        let replacement = (!replacement.is_null()).then(|| Event { ptr: replacement });
+        (code, replacement)
+    }
+
+    #[test]
+    fn trampoline_maps_every_action() {
+        let source = EventSource::private().expect("event source");
+        let event = KeyEvent::down(0).build(&source).expect("key event");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&calls);
+        let context = new_tap_context(Box::new(move |_| {
+            match counter.fetch_add(1, Ordering::SeqCst) {
+                0 => TapAction::Pass,
+                1 => TapAction::Drop,
+                _ => {
+                    let source = EventSource::private().expect("event source");
+                    TapAction::Replace(KeyEvent::up(0).build(&source).expect("replacement"))
+                }
+            }
+        }));
+
+        let key_down = CGEventType::KeyDown.raw();
+        assert_eq!(deliver(context.as_ptr(), &event, key_down).0, TAP_PASS);
+        assert_eq!(deliver(context.as_ptr(), &event, key_down).0, TAP_DROP);
+        let (code, replacement) = deliver(context.as_ptr(), &event, key_down);
+        assert_eq!(code, TAP_REPLACE);
+        let replacement = replacement.expect("replacement event handed to the bridge");
+        assert_eq!(replacement.event_type_typed(), Some(CGEventType::KeyUp));
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn disabled_notifications_carry_the_real_type_and_request_reenable() {
+        let event = Event::new(None).expect("event");
+        let seen = Arc::new(AtomicU32::new(0));
+        let sink = Arc::clone(&seen);
+        let context = new_tap_context(Box::new(move |tapped| {
+            sink.store(tapped.event_type(), Ordering::SeqCst);
+            TapAction::Drop
+        }));
+
+        assert_eq!(
+            deliver(context.as_ptr(), &event, TAP_DISABLED_BY_TIMEOUT).0,
+            TAP_REENABLE
+        );
+        assert_eq!(seen.load(Ordering::SeqCst), TAP_DISABLED_BY_TIMEOUT);
+        assert_ne!(event.event_type(), TAP_DISABLED_BY_TIMEOUT);
+
+        context.get().auto_reenable.store(false, Ordering::SeqCst);
+        assert_eq!(
+            deliver(context.as_ptr(), &event, TAP_DISABLED_BY_USER_INPUT).0,
+            TAP_PASS
+        );
+        assert_eq!(seen.load(Ordering::SeqCst), TAP_DISABLED_BY_USER_INPUT);
+    }
+
+    #[test]
+    fn inactive_or_panicking_callbacks_pass_events_through() {
+        let event = Event::new(None).expect("event");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&calls);
+        let context = new_tap_context(Box::new(move |_| {
+            assert_ne!(
+                counter.fetch_add(1, Ordering::SeqCst),
+                0,
+                "tap callback panic"
+            );
+            TapAction::Drop
+        }));
+        let key_down = CGEventType::KeyDown.raw();
+
+        assert_eq!(deliver(context.as_ptr(), &event, key_down).0, TAP_PASS);
+        assert_eq!(deliver(context.as_ptr(), &event, key_down).0, TAP_DROP);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        context.deactivate();
+        assert_eq!(deliver(context.as_ptr(), &event, key_down).0, TAP_PASS);
+        assert_eq!(deliver(core::ptr::null_mut(), &event, key_down).0, TAP_PASS);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 }
