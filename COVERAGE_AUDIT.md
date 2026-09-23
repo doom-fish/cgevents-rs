@@ -6,7 +6,7 @@ GAPS: 0
 EXEMPT: 1
 COVERAGE_PCT: 100.00%
 
-Audit note: VERIFIED counts symbols reachable through either the default safe API or the public `raw-ffi` feature.
+Audit note: VERIFIED counts symbols reachable through either the default safe API or the public `raw-ffi` feature, which is not enabled by default. 114 of the 209 VERIFIED rows name only a `raw_ffi` declaration; several of those (event flags, fields and types) also have typed safe equivalents that the table doesn't list. The headers of the newer SDKs installed alongside MacOSX26.2.sdk were not re-audited.
 
 ## 🟢 VERIFIED
 | Symbol | Kind | Header | Wrapped by |
@@ -17,7 +17,7 @@ Audit note: VERIFIED counts symbols reachable through either the default safe AP
 | CGEventCreateFromData | function | CGEvent.h | `raw_ffi::CGEventCreateFromData`, `Event::from_data()` |
 | CGEventCreateKeyboardEvent | function | CGEvent.h | `raw_ffi::CGEventCreateKeyboardEvent`, `KeyEvent` builders |
 | CGEventCreateMouseEvent | function | CGEvent.h | `raw_ffi::CGEventCreateMouseEvent`, `MouseEvent` builders |
-| CGEventCreateScrollWheelEvent | function | CGEvent.h | `raw_ffi::CGEventCreateScrollWheelEvent`, `ScrollEvent` builders |
+| CGEventCreateScrollWheelEvent | function | CGEvent.h | `raw_ffi::CGEventCreateScrollWheelEvent` (variadic); `ScrollEvent` builders use `CGEventCreateScrollWheelEvent2` |
 | CGEventCreateScrollWheelEvent2 | function | CGEvent.h | `raw_ffi::CGEventCreateScrollWheelEvent2`, `ScrollEvent` builders |
 | CGEventCreateSourceFromEvent | function | CGEvent.h | `raw_ffi::CGEventCreateSourceFromEvent`, `Event::source()` |
 | CGEventGetDoubleValueField | function | CGEvent.h | `raw_ffi::CGEventGetDoubleValueField`, `Event::double_value()` |

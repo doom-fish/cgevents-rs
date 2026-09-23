@@ -6,7 +6,7 @@ GAPS: 0
 EXEMPT: 1
 COVERAGE_PCT: 100.00
 
-V2 validation of MacOSX26.2.sdk. All 210 public symbols from CGEvent.h, CGEventSource.h, and CGEventTypes.h are accounted for: 209 via raw-ffi and safe Rust wrappers (Event, EventSource, EventTap, etc.), 1 as exempt.
+V2 validation of MacOSX26.2.sdk. All 210 public symbols from CGEvent.h, CGEventSource.h, and CGEventTypes.h are accounted for: 209 via raw-ffi and safe Rust wrappers (Event, EventSource, EventTap, etc.), 1 as exempt. 114 of the 209 VERIFIED rows name only a `raw_ffi` declaration, which needs the non-default `raw-ffi` feature; several of those also have typed safe equivalents that the table doesn't list.
 
 ## 🟢 VERIFIED
 | Symbol | Kind | Header | Wrapped by |
@@ -17,7 +17,7 @@ V2 validation of MacOSX26.2.sdk. All 210 public symbols from CGEvent.h, CGEventS
 | CGEventCreateFromData | function | CGEvent.h | `raw_ffi::CGEventCreateFromData`, `Event::from_data()` |
 | CGEventCreateKeyboardEvent | function | CGEvent.h | `raw_ffi::CGEventCreateKeyboardEvent`, `KeyEvent` builders |
 | CGEventCreateMouseEvent | function | CGEvent.h | `raw_ffi::CGEventCreateMouseEvent`, `MouseEvent` builders |
-| CGEventCreateScrollWheelEvent | function | CGEvent.h | `raw_ffi::CGEventCreateScrollWheelEvent`, `ScrollEvent` builders |
+| CGEventCreateScrollWheelEvent | function | CGEvent.h | `raw_ffi::CGEventCreateScrollWheelEvent` (variadic); `ScrollEvent` builders use `CGEventCreateScrollWheelEvent2` |
 | CGEventCreateScrollWheelEvent2 | function | CGEvent.h | `raw_ffi::CGEventCreateScrollWheelEvent2`, `ScrollEvent` builders |
 | CGEventCreateSourceFromEvent | function | CGEvent.h | `raw_ffi::CGEventCreateSourceFromEvent`, `Event::source()` |
 | CGEventGetDoubleValueField | function | CGEvent.h | `raw_ffi::CGEventGetDoubleValueField`, `Event::double_value()` |

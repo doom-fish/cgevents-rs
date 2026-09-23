@@ -1,7 +1,7 @@
 # Quartz Event Services coverage audit
 
 Crate: `cgevents`  
-Target release: `0.5.1`
+Audited against the MacOSX26.2.sdk headers; the table was last revised for release `0.11.0`.
 
 Reference headers audited:
 
@@ -25,8 +25,8 @@ Legend:
 | `CGEventCreateFromData` | ✅ implemented | `Event::from_data`. |
 | `CGEventCreateMouseEvent` | ✅ implemented | `MouseEvent::build`. |
 | `CGEventCreateKeyboardEvent` | ✅ implemented | `KeyEvent::build`. |
-| `CGEventCreateScrollWheelEvent` | ✅ implemented | `ScrollEvent::build` (1-axis path). |
-| `CGEventCreateScrollWheelEvent2` | ✅ implemented | `ScrollEvent::build` (2D / 3D path). |
+| `CGEventCreateScrollWheelEvent` | ✅ implemented | Raw only: `raw_ffi::CGEventCreateScrollWheelEvent`, declared variadic like the C function. |
+| `CGEventCreateScrollWheelEvent2` | ✅ implemented | `ScrollEvent::build` for every wheel count. |
 | `CGEventCreateCopy` | ✅ implemented | `Event::copy`. |
 | `CGEventCreateSourceFromEvent` | ✅ implemented | `Event::source`. |
 | `CGEventSetSource` | ✅ implemented | `Event::set_source`. |
@@ -40,7 +40,7 @@ Legend:
 | `CGEventGetFlags` | ✅ implemented | `Event::flags`, `TappedEvent::flags`. |
 | `CGEventSetFlags` | ✅ implemented | `Event::set_flags`, `TappedEvent::set_flags`. |
 | `CGEventKeyboardGetUnicodeString` | ✅ implemented | `Event::unicode_string`, `TappedEvent::unicode_string`. |
-| `CGEventKeyboardSetUnicodeString` | ✅ implemented | `Event::set_unicode_string`, `TappedEvent::set_unicode_string`. |
+| `CGEventKeyboardSetUnicodeString` | ✅ implemented | `Event::set_unicode_string`, `TappedEvent::set_unicode_string`; strings over 20 UTF-16 code units are rejected. |
 | `CGEventGetIntegerValueField` | ✅ implemented | `Event::integer_field` / `integer_value`, `TappedEvent::integer_value`. |
 | `CGEventSetIntegerValueField` | ✅ implemented | `Event::set_integer_field` / `set_integer_value`, `TappedEvent::set_integer_value`. |
 | `CGEventGetDoubleValueField` | ✅ implemented | `Event::double_field` / `double_value`, `TappedEvent::double_value`. |
@@ -48,10 +48,10 @@ Legend:
 | `CGEventTapCreate` | ✅ implemented | `EventTap::new`, `EventTap::new_with_options`. |
 | `CGEventTapCreateForPSN` | ⏭️ skipped — OS X 10.x deprecated | Safe wrapper intentionally omitted; legacy raw C symbol remains under `raw-ffi`. |
 | `CGEventTapCreateForPid` | ✅ implemented | `EventTap::for_pid`. |
-| `CGEventTapEnable` | ✅ implemented | `EventTap::enable`, `EventTap::disable`. |
+| `CGEventTapEnable` | ✅ implemented | `EventTap::enable`, `EventTap::disable`; also called automatically after a tap-disabled notification unless `EventTap::set_auto_reenable(false)`. |
 | `CGEventTapIsEnabled` | ✅ implemented | `EventTap::is_enabled`. |
 | `CGEventTapPostEvent` | ✅ implemented | `CGEventTapProxy::post_event`, `TappedEvent::post`. |
-| `CGEventPost` | ✅ implemented | `Event::post`, builder `post` helpers. |
+| `CGEventPost` | ✅ implemented | `Event::post`, builder `post` helpers; needs the Accessibility permission, see `EventTap::preflight_post_access`. |
 | `CGEventPostToPSN` | ⏭️ skipped — OS X 10.x deprecated | Safe wrapper intentionally omitted; legacy raw C symbol remains under `raw-ffi`. |
 | `CGEventPostToPid` | ✅ implemented | `Event::post_to_pid`, builder `post_to_pid` helpers. |
 | `CGGetEventTapList` | ✅ implemented | `EventTap::installed`. |

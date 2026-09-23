@@ -46,11 +46,6 @@ pub struct CGEventTapInformation {
 // marshalled data silently corrupts. These compile-time assertions pin the
 // Rust ABI; the cross-language `cgevent_verify_ffi_layout` check (verified by
 // `tests/ffi_layout_tests.rs`) guards that the Swift layout still agrees.
-//
-// NOTE: `offset_of!` is deliberately not used here — the crate's MSRV is 1.76
-// and `offset_of!` only stabilised in 1.77. Size and alignment assertions are
-// MSRV-safe and still catch field reordering/retyping (which changes padding
-// and therefore the overall size).
 use core::mem::{align_of, size_of};
 
 const _: () = assert!(size_of::<CGEventTapInformation>() == 48);

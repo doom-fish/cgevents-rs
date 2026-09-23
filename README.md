@@ -2,7 +2,9 @@
 
 Safe Rust bindings for Apple's [Quartz Event Services](https://developer.apple.com/documentation/coregraphics/quartz_event_services) on macOS — synthesise, inspect, and intercept keyboard, mouse, tablet, and scroll-wheel events globally.
 
-> **Status:** v0.6.0 adds a Tier-2 async Stream module (`async` feature) with `CGEventTapStream` — an executor-agnostic, lossy async stream over `CGEventTapCreate`. v0.5.1 ships a Swift-first bridge for `CGEvent`, `CGEventSource`, `CGEventTap`, `CGEventField`, `CGEventType`, `CGEventFlags`, `CGEventMouseSubtype`, `CGGesturePhase`, `CGMomentumScrollPhase`, `CGScrollPhase`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`. The legacy direct C surface remains available behind the `raw-ffi` feature.
+> **Status:** v0.11 makes event taps safe to drop from any thread or from inside their own callback, re-enables taps that the system disables, and lets a tap callback replace an event. The Swift-first bridge covers `CGEvent`, `CGEventSource`, `CGEventTap`, `CGEventField`, `CGEventType`, `CGEventFlags`, `CGEventMouseSubtype`, `CGGesturePhase`, `CGMomentumScrollPhase`, `CGScrollPhase`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`; the `async` feature adds `CGEventTapStream`, and the legacy direct C surface remains available behind the `raw-ffi` feature.
+
+Requires macOS 10.15 or later.
 
 ## Highlights
 
@@ -10,7 +12,7 @@ Safe Rust bindings for Apple's [Quartz Event Services](https://developer.apple.c
 - Typed Rust wrappers for `CGEventType`, `CGEventField`, `CGEventFlags`, `CGEventMouseSubtype`, `CGGesturePhase`, `CGMomentumScrollPhase`, `CGScrollPhase`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`.
 - Safe wrappers for event creation, copying, serialisation, source extraction, typed scroll/momentum phase inspection, tap creation, tap inventory, and Accessibility preflight/request helpers.
 - **`async` feature** — `CGEventTapStream` wraps `CGEventTapCreate` as a `BoundedAsyncStream<CGEventItem>` with a dedicated run-loop thread and RAII unsubscribe.
-- 12 runnable examples + 13 per-area test suites.
+- 12 runnable examples and per-area test suites.
 
 ## Quick start — async event stream
 
@@ -87,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("keycode={} flags={:?}", event.keycode(), event.flags());
         TapAction::Pass
     })?;
-    tap.run();
+    tap.run()?;
     Ok(())
 }
 ```
@@ -103,14 +105,22 @@ cgevents = { version = "0.5", features = ["raw-ffi"] }
 
 This exposes `cgevents::raw_ffi` with the legacy `extern "C"` declarations, constants, and structs.
 
+## Event taps
+
+- A tap is serviced by the run loop of the thread that created it. `EventTap::run` runs that loop and returns `CGError::WrongThread` on any other thread; `EventTap::stop` works from any thread, even before `run` starts.
+- `EventTap` is `Send` and `Sync`. Dropping it from another thread removes the tap and waits (up to two seconds) for its run loop to finish a callback in progress; dropping it inside its own callback is also safe.
+- When the system disables a tap (`kCGEventTapDisabledByTimeout` or `ByUserInput`), the callback sees that event type and the tap is re-enabled automatically; `EventTap::set_auto_reenable(false)` turns that off.
+- A callback returns `TapAction::Pass`, `TapAction::Drop`, or `TapAction::Replace(event)` to substitute another event.
+
 ## Permissions
 
-- `CGEventPost` synthesis does not require Accessibility permission.
-- `CGEventTap` interception usually requires Accessibility permission.
-- `EventTap::{preflight,request}_listen_access` and `EventTap::{preflight,request}_post_access` wrap the 10.15+ access helpers.
+- Posting events (`Event::post`, `Event::post_to_pid` and the builders' `post` helpers) requires the Accessibility permission on macOS 10.15 and later. Without it the system drops the events silently and `post` still returns, so check `EventTap::preflight_post_access()` (or ask with `EventTap::request_post_access()`) before posting.
+- Intercepting events with a filtering tap requires the Accessibility permission; a listen-only tap that observes keyboard events requires Input Monitoring (`EventTap::preflight_listen_access`, `EventTap::request_listen_access`). Tap creation returns `CGError::TapCreateFailed` without them.
 
 ## Notes
 
+- A keyboard event carries at most 20 UTF-16 code units of text (`MAX_UNICODE_STRING_LENGTH`); `set_unicode_string` and `KeyEvent::build` reject longer strings with `CGError::InvalidArgument`. Use `type_string` for longer text.
+- `Event` and `EventSource` are `Send` but not `Sync`: their setters take `&self`, so share one across threads only behind a lock.
 - `Event::data()` / `Event::from_data()` use the Swift overlay's event-data bridge. On macOS 12+ this is fully supported by the default Swift bridge. The direct C entry points remain available behind `raw-ffi` for lower-level callers.
 - Deprecated PSN tap/post APIs remain intentionally omitted from the safe surface; see `COVERAGE.md`.
 
