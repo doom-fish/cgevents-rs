@@ -57,3 +57,44 @@ fn cg_event_source_raw_ffi_coverage() {
         &extract_rust_externs(),
     );
 }
+
+#[test]
+fn variadic_scroll_wheel_declaration_passes_every_axis() {
+    unsafe {
+        let one_axis = raw_ffi::CGEventCreateScrollWheelEvent(
+            core::ptr::null_mut(),
+            raw_ffi::kCGScrollEventUnitLine,
+            1,
+            5,
+        );
+        assert!(!one_axis.is_null());
+        assert_eq!(
+            raw_ffi::CGEventGetIntegerValueField(one_axis, raw_ffi::kCGScrollWheelEventDeltaAxis1),
+            5
+        );
+        raw_ffi::CFRelease(one_axis.cast_const());
+
+        let three_axes = raw_ffi::CGEventCreateScrollWheelEvent(
+            core::ptr::null_mut(),
+            raw_ffi::kCGScrollEventUnitLine,
+            3,
+            -2,
+            7_i32,
+            -9_i32,
+        );
+        assert!(!three_axes.is_null());
+        assert_eq!(
+            raw_ffi::CGEventGetIntegerValueField(three_axes, raw_ffi::kCGScrollWheelEventDeltaAxis1),
+            -2
+        );
+        assert_eq!(
+            raw_ffi::CGEventGetIntegerValueField(three_axes, raw_ffi::kCGScrollWheelEventDeltaAxis2),
+            7
+        );
+        assert_eq!(
+            raw_ffi::CGEventGetIntegerValueField(three_axes, raw_ffi::kCGScrollWheelEventDeltaAxis3),
+            -9
+        );
+        raw_ffi::CFRelease(three_axes.cast_const());
+    }
+}

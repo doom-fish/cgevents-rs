@@ -259,6 +259,7 @@ unsafe extern "C" {
         units: CGScrollEventUnit,
         wheel_count: u32,
         wheel1: i32,
+        ...
     ) -> CGEventRef;
     pub fn CGEventCreateScrollWheelEvent2(
         source: CGEventSourceRef,
