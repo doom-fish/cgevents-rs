@@ -36,7 +36,7 @@ while let Some(ev) = stream.next().await {
 Add to `Cargo.toml`:
 
 ```toml
-cgevents = { version = "0.6", features = ["async"] }
+cgevents = { version = "0.11", features = ["async"] }
 ```
 
 ## Quick start — synthesise input
@@ -100,7 +100,7 @@ Enable `raw-ffi` when you need the direct CoreGraphics C imports instead of the 
 
 ```toml
 [dependencies]
-cgevents = { version = "0.5", features = ["raw-ffi"] }
+cgevents = { version = "0.11", features = ["raw-ffi"] }
 ```
 
 This exposes `cgevents::raw_ffi` with the legacy `extern "C"` declarations, constants, and structs.

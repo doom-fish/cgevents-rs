@@ -1,5 +1,42 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.11.0] - Unreleased
+
+### Security
+
+- Event taps no longer free their callback state under a running callback. 0.10.1 freed the context as soon as the `EventTap` dropped, and the unreleased follow-up fix only retained the tap's Swift holder inside the callback, so a drop on another thread between the dispatch and that retain was still a use-after-free. The tap's `userInfo` now holds a retained `doom_fish_utils::callback_context::CallbackContext` for as long as the tap can call back, the callback takes no retain, and teardown finalises the context on the tap's own run loop (waiting for a callback in progress when the drop happens on another thread, and deferring the release when it happens inside the callback).
+
+### Fixed
+
+- A tap disabled by `kCGEventTapDisabledByTimeout` or `kCGEventTapDisabledByUserInput` stayed disabled for good. Both `EventTap` and `CGEventTapStream` now re-enable it with `CGEventTapEnable`, and `TappedEvent::event_type` reports the type the callback was invoked with, so callbacks see these notifications instead of the event's own `CGEventGetType` value.
+- `EventTap::stop` issued before `EventTap::run` started was discarded by Core Foundation and `run` then blocked forever; the stop request now takes effect when the loop starts. `CGEventTapStream` uses the same stop request.
+- `CGEventTapStream::subscribe` with a capacity of zero returns `CGError::InvalidArgument` instead of panicking.
+- `raw_ffi::CGEventCreateScrollWheelEvent` is declared variadic, like the C function; calls with more than one wheel passed the extra deltas incorrectly on arm64.
+- The README said posting events needs no permission. It needs the Accessibility permission since macOS 10.15, and events are dropped silently without it; the README now says so and points at `EventTap::preflight_post_access`.
+- The stream bridge no longer force-unwraps `CFRunLoopGetCurrent`.
+
+### Changed
+
+- **BREAKING:** `EventTap::run` returns `Result<(), CGError>`. It runs the tap's own run loop and returns the new `CGError::WrongThread` on any thread other than the one that created the tap; it used to run the calling thread's loop.
+- **BREAKING:** `Event` and `EventSource` are no longer `Sync`, because their setters take `&self` and Core Graphics doesn't synchronise them. Both remain `Send`.
+- **BREAKING:** `Event::set_unicode_string` and `TappedEvent::set_unicode_string` return `Result<(), CGError>` and reject strings longer than 20 UTF-16 code units, which delivered keyboard events cannot carry; `KeyEvent::build` returns that error for `with_unicode` strings over the limit.
+- **BREAKING:** `TapAction` gained a variant that carries an `Event`, so it only derives `Debug` now (no `Clone`, `PartialEq` or `Eq`).
+- **BREAKING:** the Swift-bridge declarations in `cgevents::ffi::cg_event_tap` changed: `RustTapCallback` takes a replacement-event out-parameter, the context hooks are `unsafe extern "C" fn`, and `cgevent_tap_run(tap)` replaces `cgevent_tap_run_current_run_loop`.
+- **BREAKING:** requires `apple-cf` 0.11 (`>=0.11, <0.12`) and `doom-fish-utils` 0.4.1 (`>=0.4.1, <0.5`); `rust-version` is 1.82.
+- Dropping an `EventTap` on a thread other than its own waits up to two seconds for a callback in progress on the tap's run loop.
+- A tap callback that panicked is still called for later events; its lock used to stay poisoned, so every later event passed through without reaching it.
+
+### Added
+
+- `TapAction::Replace(Event)`, which hands the event system a new event in place of the intercepted one.
+- `EventTap::set_auto_reenable` and `EventTap::auto_reenable` (on by default).
+- `MAX_UNICODE_STRING_LENGTH`, and a `Debug` implementation for `Event`.
+
 ## [0.10.1] - 2026-05-20
 
 - Widen `doom-fish-utils` dependency bound to `<0.4` so the 0.3.x SPSC-ring release resolves cleanly. No source changes.
