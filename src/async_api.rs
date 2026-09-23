@@ -235,6 +235,11 @@ impl CGEventTapStream {
         events_mask: u64,
         capacity: usize,
     ) -> Result<Self, CGError> {
+        if capacity == 0 {
+            return Err(CGError::InvalidArgument(
+                "tap stream capacity must be greater than zero".into(),
+            ));
+        }
         let (stream, sender) = BoundedAsyncStream::new(capacity);
         let sender_ptr = Box::into_raw(Box::new(sender));
 

@@ -86,6 +86,7 @@ mod async_stream {
     ///
     /// This test is only exercised when we DON'T have Accessibility access.
     #[test]
+    #[ignore = "without listen access, installing the tap can raise the Input Monitoring prompt"]
     fn subscribe_fails_without_permission() {
         if has_access() {
             eprintln!("skip: machine has Accessibility permission");
@@ -105,6 +106,10 @@ mod async_stream {
     /// without Accessibility).
     #[test]
     fn subscribe_keyboard_mask() {
+        if !has_access() {
+            eprintln!("skip: Accessibility permission not granted");
+            return;
+        }
         let mask = CGEventType::KeyDown.mask_bit() | CGEventType::KeyUp.mask_bit();
         match CGEventTapStream::subscribe(TapLocation::Session, mask, 16) {
             Ok(_) | Err(cgevents::CGError::TapCreateFailed) => {
@@ -112,5 +117,33 @@ mod async_stream {
             }
             Err(e) => panic!("unexpected error: {e:?}"),
         }
+    }
+
+    #[test]
+    fn zero_capacity_is_rejected() {
+        let result = CGEventTapStream::subscribe(TapLocation::Session, 0, 0);
+        assert!(matches!(result, Err(cgevents::CGError::InvalidArgument(_))));
+    }
+
+    #[test]
+    fn dropping_fresh_streams_never_hangs() {
+        if !has_access() {
+            eprintln!("skip: Accessibility permission not granted");
+            return;
+        }
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for _ in 0..50 {
+                match CGEventTapStream::subscribe(TapLocation::Session, 0, 1) {
+                    Ok(stream) => drop(stream),
+                    Err(cgevents::CGError::TapCreateFailed) => break,
+                    Err(e) => panic!("unexpected error: {e:?}"),
+                }
+            }
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(60))
+            .expect("dropping a fresh tap stream hung");
     }
 }

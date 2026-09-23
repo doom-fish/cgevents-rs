@@ -54,7 +54,10 @@ final class CGEventsTapAsyncStreamBridge {
                 sema.signal()
                 return
             }
-            let rl = CFRunLoopGetCurrent()!
+            guard let rl = CFRunLoopGetCurrent() else {
+                sema.signal()
+                return
+            }
             bridge.runLoop = rl
 
             let userInfo = Unmanaged.passUnretained(bridge).toOpaque()
@@ -106,7 +109,7 @@ final class CGEventsTapAsyncStreamBridge {
         }
         if let rl = runLoop {
             // Signals CFRunLoopRun() to return on the tap thread.
-            CFRunLoopStop(rl)
+            requestRunLoopStop(rl)
         }
         // Wait for the tap thread to fully exit before returning to the Rust
         // caller, which will immediately free the sender pointer.
@@ -150,6 +153,9 @@ private func cgeventsAsyncTapCallback(
     let bridge = Unmanaged<CGEventsTapAsyncStreamBridge>
         .fromOpaque(userInfo)
         .takeUnretainedValue()
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput, let port = bridge.port {
+        CGEvent.tapEnable(tap: port, enable: true)
+    }
     let location = event.location
     let flags = event.flags.rawValue
     let timestamp = event.timestamp
