@@ -72,7 +72,6 @@ pub struct Event {
 }
 
 unsafe impl Send for Event {}
-unsafe impl Sync for Event {}
 
 impl fmt::Debug for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

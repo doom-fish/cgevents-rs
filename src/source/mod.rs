@@ -69,7 +69,6 @@ pub struct EventSource {
 }
 
 unsafe impl Send for EventSource {}
-unsafe impl Sync for EventSource {}
 
 impl EventSource {
     #[must_use]

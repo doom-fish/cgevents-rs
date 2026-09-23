@@ -74,6 +74,10 @@ required-features = ["raw-ffi"]
 name = "async_stream_tests"
 required-features = ["async"]
 
+[[test]]
+name = "thread_safety_tests"
+required-features = ["async"]
+
 [[example]]
 name = "12_async_tap_stream"
 required-features = ["async"]
