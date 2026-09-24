@@ -17,10 +17,11 @@ Requires macOS 10.15 or later.
 ## Quick start — async event stream
 
 ```rust,no_run
+# #[cfg(feature = "async")]
+# async fn run() -> Result<(), cgevents::CGError> {
 use cgevents::async_api::CGEventTapStream;
 use cgevents::{TapLocation, CG_EVENT_MASK_FOR_ALL_EVENTS};
 
-# async fn run() -> Result<(), cgevents::CGError> {
 let stream = CGEventTapStream::subscribe(
     TapLocation::Session,
     CG_EVENT_MASK_FOR_ALL_EVENTS,
