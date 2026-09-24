@@ -21,6 +21,7 @@ pub enum CGError {
     /// A Swift bridge precondition failed.
     BridgeError(String),
     WrongThread,
+    PostAccessDenied,
 }
 
 impl fmt::Display for CGError {
@@ -40,6 +41,10 @@ impl fmt::Display for CGError {
             Self::WrongThread => write!(
                 f,
                 "EventTap::run must be called on the thread that created the tap"
+            ),
+            Self::PostAccessDenied => write!(
+                f,
+                "posting events requires the Accessibility permission; the event was not posted (see EventTap::preflight_post_access and EventTap::request_post_access)"
             ),
         }
     }

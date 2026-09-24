@@ -2,7 +2,7 @@
 
 Safe Rust bindings for Apple's [Quartz Event Services](https://developer.apple.com/documentation/coregraphics/quartz_event_services) on macOS — synthesise, inspect, and intercept keyboard, mouse, tablet, and scroll-wheel events globally.
 
-> **Status:** v0.11 makes event taps safe to drop from any thread or from inside their own callback, re-enables taps that the system disables, and lets a tap callback replace an event. The Swift-first bridge covers `CGEvent`, `CGEventSource`, `CGEventTap`, `CGEventField`, `CGEventType`, `CGEventFlags`, `CGEventMouseSubtype`, `CGGesturePhase`, `CGMomentumScrollPhase`, `CGScrollPhase`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`; the `async` feature adds `CGEventTapStream`, and the legacy direct C surface remains available behind the `raw-ffi` feature.
+> **Status:** v0.11 makes event taps safe to drop from any thread or from inside their own callback, re-enables taps that the system disables, lets a tap callback replace an event, and returns `CGError::PostAccessDenied` instead of posting an event the system would drop. The Swift-first bridge covers `CGEvent`, `CGEventSource`, `CGEventTap`, `CGEventField`, `CGEventType`, `CGEventFlags`, `CGEventMouseSubtype`, `CGGesturePhase`, `CGMomentumScrollPhase`, `CGScrollPhase`, `CGEventTapLocation`, `CGEventTapOptions`, `CGEventTapProxy`, and `CGEventTimestamp`; the `async` feature adds `CGEventTapStream`, and the legacy direct C surface remains available behind the `raw-ffi` feature.
 
 Requires macOS 10.15 or later.
 
@@ -114,7 +114,7 @@ This exposes `cgevents::raw_ffi` with the legacy `extern "C"` declarations, cons
 
 ## Permissions
 
-- Posting events (`Event::post`, `Event::post_to_pid` and the builders' `post` helpers) requires the Accessibility permission on macOS 10.15 and later. Without it the system drops the events silently and `post` still returns, so check `EventTap::preflight_post_access()` (or ask with `EventTap::request_post_access()`) before posting.
+- Posting events (`Event::post`, `Event::post_to_pid`, `CGEventTapProxy::post_event`, `TappedEvent::post`, the builders' `post` helpers and `type_string`) requires the Accessibility permission on macOS 10.15 and later. Each call checks it with `CGPreflightPostEventAccess` first and, when it is missing, returns `CGError::PostAccessDenied` without posting, instead of handing the system an event it would drop silently. `EventTap::request_post_access()` asks for the permission. The check is a privacy-database query that takes a millisecond or two, so `type_string` makes it once for the whole string.
 - Intercepting events with a filtering tap requires the Accessibility permission; a listen-only tap that observes keyboard events requires Input Monitoring (`EventTap::preflight_listen_access`, `EventTap::request_listen_access`). Tap creation returns `CGError::TapCreateFailed` without them.
 
 ## Notes

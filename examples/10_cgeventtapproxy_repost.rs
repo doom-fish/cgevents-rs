@@ -15,6 +15,10 @@ fn run() {
         println!("listen access unavailable; skipping tap-proxy example");
         return;
     }
+    if !EventTap::preflight_post_access() {
+        println!("post access unavailable; skipping tap-proxy example");
+        return;
+    }
 
     let seen = Arc::new(AtomicBool::new(false));
     let seen_in_callback = Arc::clone(&seen);
@@ -27,7 +31,9 @@ fn run() {
             if event.keycode() == Keycode::A && !seen_in_callback.swap(true, Ordering::SeqCst) {
                 if let Ok(source) = EventSource::private() {
                     if let Ok(key_up) = KeyEvent::up(Keycode::A).build(&source) {
-                        event.proxy().post_event(&key_up);
+                        if let Err(error) = event.proxy().post_event(&key_up) {
+                            println!("tap-proxy post failed ({error})");
+                        }
                     }
                 }
                 EventTap::stop_current_run_loop();
@@ -45,7 +51,9 @@ fn run() {
     let run_result = thread::scope(|scope| {
         scope.spawn(|| {
             thread::sleep(Duration::from_millis(50));
-            let _ = KeyEvent::down(Keycode::A).post(TapLocation::Session);
+            if let Err(error) = KeyEvent::down(Keycode::A).post(TapLocation::Session) {
+                println!("posting the key-down event failed ({error})");
+            }
         });
         scope.spawn(|| {
             thread::sleep(Duration::from_millis(250));

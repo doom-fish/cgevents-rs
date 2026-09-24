@@ -215,8 +215,9 @@ impl TappedEvent<'_> {
     }
 
     /// Post a synthetic event back into the stream from this tap point.
-    pub fn post(&self, event: &Event) {
-        self.proxy().post_event(event);
+    #[allow(clippy::missing_errors_doc)]
+    pub fn post(&self, event: &Event) -> Result<(), CGError> {
+        self.proxy().post_event(event)
     }
 }
 
@@ -573,13 +574,14 @@ impl EventTap {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use super::{
         new_tap_context, trampoline, TapAction, TAP_DISABLED_BY_TIMEOUT,
         TAP_DISABLED_BY_USER_INPUT, TAP_DROP, TAP_PASS, TAP_REENABLE, TAP_REPLACE,
     };
     use crate::cg_event_type::CGEventType;
+    use crate::error::CGError;
     use crate::event::{Event, KeyEvent};
     use crate::source::EventSource;
 
@@ -677,5 +679,28 @@ mod tests {
         assert_eq!(deliver(context.as_ptr(), &event, key_down).0, TAP_PASS);
         assert_eq!(deliver(core::ptr::null_mut(), &event, key_down).0, TAP_PASS);
         assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn posting_through_a_null_proxy_fails_before_anything_is_posted() {
+        let event = Event::new(None).expect("event");
+        let outcome = Arc::new(Mutex::new(None));
+        let sink = Arc::clone(&outcome);
+        let context = new_tap_context(Box::new(move |tapped| {
+            assert!(tapped.proxy().is_null());
+            let synthetic = Event::new(None).expect("synthetic event");
+            *sink.lock().expect("outcome lock") = Some(tapped.post(&synthetic));
+            TapAction::Pass
+        }));
+
+        assert_eq!(
+            deliver(context.as_ptr(), &event, CGEventType::KeyDown.raw()).0,
+            TAP_PASS
+        );
+        let posted = outcome.lock().expect("outcome lock").take();
+        assert!(
+            matches!(posted, Some(Err(CGError::InvalidArgument(_)))),
+            "{posted:?}"
+        );
     }
 }

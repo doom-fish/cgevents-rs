@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `EventTap::stop` issued before `EventTap::run` started was discarded by Core Foundation and `run` then blocked forever; the stop request now takes effect when the loop starts. `CGEventTapStream` uses the same stop request.
 - `CGEventTapStream::subscribe` with a capacity of zero returns `CGError::InvalidArgument` instead of panicking.
 - `raw_ffi::CGEventCreateScrollWheelEvent` is declared variadic, like the C function; calls with more than one wheel passed the extra deltas incorrectly on arm64.
-- The README said posting events needs no permission. It needs the Accessibility permission since macOS 10.15, and events are dropped silently without it; the README now says so and points at `EventTap::preflight_post_access`.
+- Posting an event without the Accessibility permission, which macOS requires since 10.15, handed the system an event it dropped silently, and the README said posting needs no permission. The posting calls now return `CGError::PostAccessDenied` in that case, and the README documents the permission.
+- `type_string` builds every event before it posts the first one, so a failed build no longer leaves the text half typed.
 - The stream bridge no longer force-unwraps `CFRunLoopGetCurrent`.
 
 ### Changed
@@ -26,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING:** `Event` and `EventSource` are no longer `Sync`, because their setters take `&self` and Core Graphics doesn't synchronise them. Both remain `Send`.
 - **BREAKING:** `Event::set_unicode_string` and `TappedEvent::set_unicode_string` return `Result<(), CGError>` and reject strings longer than 20 UTF-16 code units, which delivered keyboard events cannot carry; `KeyEvent::build` returns that error for `with_unicode` strings over the limit.
 - **BREAKING:** `TapAction` gained a variant that carries an `Event`, so it only derives `Debug` now (no `Clone`, `PartialEq` or `Eq`).
+- **BREAKING:** `Event::post`, `Event::post_to_pid`, `CGEventTapProxy::post_event` and `TappedEvent::post` return `Result<(), CGError>`. Each checks `CGPreflightPostEventAccess` first and returns `CGError::PostAccessDenied` without posting when the process lacks the Accessibility permission; the builders' `post` and `post_to_pid` helpers and `type_string` return that error too. `CGEventTapProxy::post_event` returns `CGError::InvalidArgument` for a null proxy.
 - **BREAKING:** the Swift-bridge declarations in `cgevents::ffi::cg_event_tap` changed: `RustTapCallback` takes a replacement-event out-parameter, the context hooks are `unsafe extern "C" fn`, and `cgevent_tap_run(tap)` replaces `cgevent_tap_run_current_run_loop`.
 - **BREAKING:** requires `apple-cf` 0.11 (`>=0.11, <0.12`) and `doom-fish-utils` 0.4.1 (`>=0.4.1, <0.5`); `rust-version` is 1.82.
 - Dropping an `EventTap` on a thread other than its own waits up to two seconds for a callback in progress on the tap's run loop.
@@ -36,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TapAction::Replace(Event)`, which hands the event system a new event in place of the intercepted one.
 - `EventTap::set_auto_reenable` and `EventTap::auto_reenable` (on by default).
 - `MAX_UNICODE_STRING_LENGTH`, and a `Debug` implementation for `Event`.
+- `CGError::PostAccessDenied`.
 
 ## [0.10.1] - 2026-05-20
 

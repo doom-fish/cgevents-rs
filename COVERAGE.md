@@ -50,14 +50,14 @@ Legend:
 | `CGEventTapCreateForPid` | ✅ implemented | `EventTap::for_pid`. |
 | `CGEventTapEnable` | ✅ implemented | `EventTap::enable`, `EventTap::disable`; also called automatically after a tap-disabled notification unless `EventTap::set_auto_reenable(false)`. |
 | `CGEventTapIsEnabled` | ✅ implemented | `EventTap::is_enabled`. |
-| `CGEventTapPostEvent` | ✅ implemented | `CGEventTapProxy::post_event`, `TappedEvent::post`. |
-| `CGEventPost` | ✅ implemented | `Event::post`, builder `post` helpers; needs the Accessibility permission, see `EventTap::preflight_post_access`. |
+| `CGEventTapPostEvent` | ✅ implemented | `CGEventTapProxy::post_event`, `TappedEvent::post`; returns `CGError::PostAccessDenied` without the Accessibility permission. |
+| `CGEventPost` | ✅ implemented | `Event::post`, builder `post` helpers, `type_string`; returns `CGError::PostAccessDenied` without the Accessibility permission. |
 | `CGEventPostToPSN` | ⏭️ skipped — OS X 10.x deprecated | Safe wrapper intentionally omitted; legacy raw C symbol remains under `raw-ffi`. |
-| `CGEventPostToPid` | ✅ implemented | `Event::post_to_pid`, builder `post_to_pid` helpers. |
+| `CGEventPostToPid` | ✅ implemented | `Event::post_to_pid`, builder `post_to_pid` helpers; returns `CGError::PostAccessDenied` without the Accessibility permission. |
 | `CGGetEventTapList` | ✅ implemented | `EventTap::installed`. |
 | `CGPreflightListenEventAccess` | ✅ implemented | `EventTap::preflight_listen_access`. |
 | `CGRequestListenEventAccess` | ✅ implemented | `EventTap::request_listen_access`. |
-| `CGPreflightPostEventAccess` | ✅ implemented | `EventTap::preflight_post_access`. |
+| `CGPreflightPostEventAccess` | ✅ implemented | `EventTap::preflight_post_access`; every safe posting call checks it before posting. |
 | `CGRequestPostEventAccess` | ✅ implemented | `EventTap::request_post_access`. |
 
 ## Functions — `CGEventSource.h`

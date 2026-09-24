@@ -13,6 +13,7 @@ use crate::cg_scroll_phase::CGScrollPhase;
 use crate::error::CGError;
 use crate::ffi;
 use crate::source::EventSource;
+use crate::tap::EventTap;
 
 /// Mouse button identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -77,6 +78,17 @@ pub(crate) fn keyboard_unicode_units(string: &str) -> Result<Vec<u16>, CGError> 
         )));
     }
     Ok(utf16)
+}
+
+pub(crate) fn post_checked(
+    access_granted: fn() -> bool,
+    post: impl FnOnce(),
+) -> Result<(), CGError> {
+    if !access_granted() {
+        return Err(CGError::PostAccessDenied);
+    }
+    post();
+    Ok(())
 }
 
 /// A retained `CGEventRef`. Drops on scope exit.
@@ -382,12 +394,18 @@ impl Event {
         }
     }
 
-    pub fn post(&self, location: CGEventTapLocation) {
-        unsafe { ffi::cg_event::cgevent_post(self.ptr, location.raw()) };
+    #[allow(clippy::missing_errors_doc)]
+    pub fn post(&self, location: CGEventTapLocation) -> Result<(), CGError> {
+        post_checked(EventTap::preflight_post_access, || unsafe {
+            ffi::cg_event::cgevent_post(self.ptr, location.raw());
+        })
     }
 
-    pub fn post_to_pid(&self, pid: i32) {
-        unsafe { ffi::cg_event::cgevent_post_to_pid(self.ptr, pid) };
+    #[allow(clippy::missing_errors_doc)]
+    pub fn post_to_pid(&self, pid: i32) -> Result<(), CGError> {
+        post_checked(EventTap::preflight_post_access, || unsafe {
+            ffi::cg_event::cgevent_post_to_pid(self.ptr, pid);
+        })
     }
 }
 
@@ -461,24 +479,20 @@ impl KeyEvent {
     ///
     /// # Errors
     ///
-    /// See [`Self::build`].
+    /// See [`Self::build`]. Returns [`CGError::PostAccessDenied`] without the Accessibility permission.
     pub fn post(&self, location: TapLocation) -> Result<(), CGError> {
         let source = EventSource::private()?;
-        let event = self.build(&source)?;
-        event.post(location);
-        Ok(())
+        self.build(&source)?.post(location)
     }
 
     /// Build + post the event to a specific process by PID.
     ///
     /// # Errors
     ///
-    /// See [`Self::build`].
+    /// See [`Self::build`]. Returns [`CGError::PostAccessDenied`] without the Accessibility permission.
     pub fn post_to_pid(&self, pid: i32) -> Result<(), CGError> {
         let source = EventSource::private()?;
-        let event = self.build(&source)?;
-        event.post_to_pid(pid);
-        Ok(())
+        self.build(&source)?.post_to_pid(pid)
     }
 }
 
@@ -553,24 +567,20 @@ impl MouseEvent {
     ///
     /// # Errors
     ///
-    /// See [`Self::build`].
+    /// See [`Self::build`]. Returns [`CGError::PostAccessDenied`] without the Accessibility permission.
     pub fn post(&self, location: TapLocation) -> Result<(), CGError> {
         let source = EventSource::private()?;
-        let event = self.build(&source)?;
-        event.post(location);
-        Ok(())
+        self.build(&source)?.post(location)
     }
 
     /// Build + post the mouse event to a specific process by PID.
     ///
     /// # Errors
     ///
-    /// See [`Self::build`].
+    /// See [`Self::build`]. Returns [`CGError::PostAccessDenied`] without the Accessibility permission.
     pub fn post_to_pid(&self, pid: i32) -> Result<(), CGError> {
         let source = EventSource::private()?;
-        let event = self.build(&source)?;
-        event.post_to_pid(pid);
-        Ok(())
+        self.build(&source)?.post_to_pid(pid)
     }
 }
 
@@ -663,24 +673,20 @@ impl ScrollEvent {
     ///
     /// # Errors
     ///
-    /// See [`Self::build`].
+    /// See [`Self::build`]. Returns [`CGError::PostAccessDenied`] without the Accessibility permission.
     pub fn post(&self, location: TapLocation) -> Result<(), CGError> {
         let source = EventSource::private()?;
-        let event = self.build(&source)?;
-        event.post(location);
-        Ok(())
+        self.build(&source)?.post(location)
     }
 
     /// Build + post the scroll event to a specific process by PID.
     ///
     /// # Errors
     ///
-    /// See [`Self::build`].
+    /// See [`Self::build`]. Returns [`CGError::PostAccessDenied`] without the Accessibility permission.
     pub fn post_to_pid(&self, pid: i32) -> Result<(), CGError> {
         let source = EventSource::private()?;
-        let event = self.build(&source)?;
-        event.post_to_pid(pid);
-        Ok(())
+        self.build(&source)?.post_to_pid(pid)
     }
 }
 
@@ -688,17 +694,20 @@ impl ScrollEvent {
 ///
 /// # Errors
 ///
-/// See [`KeyEvent::build`].
+/// See [`KeyEvent::build`]. Returns [`CGError::PostAccessDenied`] without the Accessibility permission.
 pub fn type_string(s: &str, location: TapLocation) -> Result<(), CGError> {
     let source = EventSource::private()?;
+    let mut events = Vec::new();
     for ch in s.chars() {
         let chunk = ch.to_string();
-        let down = KeyEvent::down(0).with_unicode(&chunk).build(&source)?;
-        down.post(location);
-        let up = KeyEvent::up(0).with_unicode(&chunk).build(&source)?;
-        up.post(location);
+        events.push(KeyEvent::down(0).with_unicode(&chunk).build(&source)?);
+        events.push(KeyEvent::up(0).with_unicode(&chunk).build(&source)?);
     }
-    Ok(())
+    post_checked(EventTap::preflight_post_access, || {
+        for event in &events {
+            unsafe { ffi::cg_event::cgevent_post(event.ptr, location.raw()) };
+        }
+    })
 }
 
 /// US-QWERTY virtual keycode constants. Use with [`KeyEvent`].
@@ -753,4 +762,32 @@ pub mod Keycode {
     pub const ARROW_RIGHT: u16 = 0x7C;
     pub const ARROW_DOWN: u16 = 0x7D;
     pub const ARROW_UP: u16 = 0x7E;
+}
+
+#[cfg(test)]
+mod tests {
+    use core::cell::Cell;
+
+    use super::post_checked;
+    use crate::error::CGError;
+
+    #[test]
+    fn a_denied_post_returns_an_error_without_posting() {
+        let posts = Cell::new(0);
+        assert_eq!(
+            post_checked(|| false, || posts.set(posts.get() + 1)),
+            Err(CGError::PostAccessDenied)
+        );
+        assert_eq!(posts.get(), 0);
+        assert!(CGError::PostAccessDenied
+            .to_string()
+            .contains("Accessibility permission"));
+    }
+
+    #[test]
+    fn a_permitted_post_posts_exactly_once() {
+        let posts = Cell::new(0);
+        assert_eq!(post_checked(|| true, || posts.set(posts.get() + 1)), Ok(()));
+        assert_eq!(posts.get(), 1);
+    }
 }

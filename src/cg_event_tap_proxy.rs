@@ -2,7 +2,12 @@
 
 use core::{ffi::c_void, fmt, marker::PhantomData};
 
-use crate::{event::Event, ffi};
+use crate::{
+    error::CGError,
+    event::{post_checked, Event},
+    ffi,
+    tap::EventTap,
+};
 
 #[derive(Clone, Copy)]
 pub struct CGEventTapProxy<'a> {
@@ -38,7 +43,15 @@ impl CGEventTapProxy<'_> {
     }
 
     /// Post a synthetic event back into the stream at this tap point.
-    pub fn post_event(self, event: &Event) {
-        unsafe { ffi::cg_event_tap_proxy::cgevent_tap_proxy_post_event(self.raw, event.ptr) };
+    #[allow(clippy::missing_errors_doc)]
+    pub fn post_event(self, event: &Event) -> Result<(), CGError> {
+        if self.raw.is_null() {
+            return Err(CGError::InvalidArgument(
+                "the event tap proxy is null".into(),
+            ));
+        }
+        post_checked(EventTap::preflight_post_access, || unsafe {
+            ffi::cg_event_tap_proxy::cgevent_tap_proxy_post_event(self.raw, event.ptr);
+        })
     }
 }
