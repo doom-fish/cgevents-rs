@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Posting an event without the Accessibility permission, which macOS requires since 10.15, handed the system an event it dropped silently, and the README said posting needs no permission. The posting calls now return `CGError::PostAccessDenied` in that case, and the README documents the permission.
 - `type_string` builds every event before it posts the first one, so a failed build no longer leaves the text half typed.
 - The stream bridge no longer force-unwraps `CFRunLoopGetCurrent`.
+- The build script no longer adds the toolchain's Swift 5.5 back-deployment directory (`usr/lib/swift-5.5/macosx`) to the link search path and rpath. Its old `libswift_Concurrency.dylib` shadowed the SDK's, so a binary that also linked Swift code using newer concurrency APIs failed to link, and the rpath pointed into Xcode, which user machines don't have. The build script also stopped linking the Swift concurrency runtime, which the bridge doesn't use, so binaries no longer load `libswift_Concurrency.dylib`, which ships with the OS only from macOS 12.
 
 ### Changed
 
